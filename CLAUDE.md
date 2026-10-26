@@ -29,16 +29,12 @@ sharesight-mcp/
 ## Key Files
 
 ### `src/index.ts`
-The main CLI entry point with two commands:
+The main CLI entry point with one command:
 - `sharesight-mcp serve` - Run the MCP server (default)
-- `sharesight-mcp auth` - One-time OAuth authentication
 Contains tool definitions using Zod schemas for validation.
 
 ### `src/oauth.ts`
-OAuth 2.0 manager class handling:
-- Authorization URL generation
-- Token exchange and storage
-- Automatic token refresh
+OAuth 2.0 manager class using the client credentials grant. Holds the access token in memory and requests a new one when it expires.
 
 ### `src/sharesight-client.ts`
 HTTP client class with methods for each API endpoint. All methods:
@@ -108,16 +104,15 @@ The client throws errors for non-2xx responses. The MCP handler catches these an
 
 ## Authentication
 
-Run `sharesight-mcp auth` once to authenticate interactively. Tokens are saved to `~/.sharesight-mcp/tokens.json` and refreshed automatically.
+Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the OAuth client credentials grant and acts as the single account linked to the API application. Tokens are kept in memory only.
 
 ## Testing
 
 Currently no automated tests. Test manually:
 
-1. Run `node dist/index.js auth` to authenticate (one-time setup)
-2. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
-3. Run `node dist/index.js serve`
-4. Use MCP inspector or Claude Desktop to test tools
+1. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
+2. Run `node dist/index.js serve`
+3. Use MCP inspector or Claude Desktop to test tools
 
 ## Common Tasks
 
@@ -140,6 +135,5 @@ Currently no automated tests. Test manually:
 ## Notes
 
 - The server uses stdio transport (stdin/stdout)
-- Authentication: Run `sharesight-mcp auth` first to authenticate
-- OAuth tokens are stored at `~/.sharesight-mcp/tokens.json`
+- Authentication: OAuth client credentials, tokens held in memory
 - All tool responses are JSON stringified with 2-space indentation

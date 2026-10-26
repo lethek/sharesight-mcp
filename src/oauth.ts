@@ -1,33 +1,37 @@
 /**
  * OAuth 2.0 Manager for Sharesight API
  *
- * Handles token storage and automatic refresh.
- * Initial authentication is done via the standalone auth-cli.
- * Tokens are persisted to ~/.sharesight-mcp/tokens.json
+ * Uses the client credentials grant, so the server acts as the single
+ * Sharesight account linked to the API consumer application. Access tokens
+ * are held in memory and re-requested when they expire.
  *
  * @module oauth
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-
-const AUTH_URL = "https://api.sharesight.com/oauth2/authorize";
 const TOKEN_URL = "https://api.sharesight.com/oauth2/token";
-const REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
-
-interface StoredTokens {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number;
-  token_type: string;
-}
 
 interface TokenResponse {
   access_token: string;
-  refresh_token: string;
   expires_in: number;
   token_type: string;
+}
+
+const DEFAULT_EXPIRES_IN = 1800;
+const TOKEN_REQUEST_TIMEOUT_MS = 15000;
+
+const isCredentialStatus = (status: number): boolean => status === 400 || status === 401;
+
+/** Thrown when the token endpoint returns a non-2xx response. */
+export class TokenRequestError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "TokenRequestError";
+  }
+
+  /** True when the credentials are wrong or the account is not linked to the API application. */
+  get isCredentialError(): boolean {
+    return isCredentialStatus(this.status);
+  }
 }
 
 export interface OAuthManagerOpts {
@@ -38,54 +42,18 @@ export interface OAuthManagerOpts {
 export class OAuthManager {
   private clientId: string;
   private clientSecret: string;
-  private tokensPath: string;
-  private tokens: StoredTokens | null = null;
+  private accessToken: string | null = null;
+  private expiresAt = 0;
+  private pending: Promise<string> | null = null;
 
   constructor({ clientId, clientSecret }: OAuthManagerOpts) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
-
-    const configDir = path.join(os.homedir(), ".sharesight-mcp");
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-    this.tokensPath = path.join(configDir, "tokens.json");
-
-    this.loadTokens();
   }
 
-  private loadTokens(): void {
-    try {
-      if (fs.existsSync(this.tokensPath)) {
-        const data = fs.readFileSync(this.tokensPath, "utf-8");
-        this.tokens = JSON.parse(data);
-      }
-    } catch {
-      this.tokens = null;
-    }
-  }
-
-  private saveTokens(): void {
-    if (this.tokens) {
-      fs.writeFileSync(this.tokensPath, JSON.stringify(this.tokens, null, 2));
-    }
-  }
-
-  getAuthorizationUrl(): string {
-    const params = new URLSearchParams({
-      response_type: "code",
-      client_id: this.clientId,
-      redirect_uri: REDIRECT_URI,
-    });
-
-    return `${AUTH_URL}?${params.toString()}`;
-  }
-
-  async exchangeCodeForTokens(code: string): Promise<void> {
+  private async fetchToken(): Promise<string> {
     const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: REDIRECT_URI,
+      grant_type: "client_credentials",
       client_id: this.clientId,
       client_secret: this.clientSecret,
     });
@@ -96,79 +64,51 @@ export class OAuthManager {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: body.toString(),
+      signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Token exchange failed (${response.status}): ${errorText}`);
+      const hint =
+        isCredentialStatus(response.status)
+          ?". Check the client ID and secret, and that your Sharesight account is linked to the API application."
+          : "";
+      throw new TokenRequestError(response.status, `Token request failed (${response.status}): ${errorText}${hint}`);
     }
 
     const data = (await response.json()) as TokenResponse;
-    this.tokens = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: Date.now() + data.expires_in * 1000 - 60000, // 1 minute buffer
-      token_type: data.token_type,
-    };
-    this.saveTokens();
+    const expiresIn = Number(data.expires_in) || DEFAULT_EXPIRES_IN;
+    this.accessToken = data.access_token;
+    this.expiresAt = Date.now() + expiresIn * 1000 - 60000; // 1 minute buffer
+
+    return data.access_token;
   }
 
-  async refreshTokens(): Promise<void> {
-    if (!this.tokens?.refresh_token) {
-      throw new Error("No refresh token available");
+  /** True if a non-expired token is cached. */
+  hasToken(): boolean {
+    return this.accessToken !== null && Date.now() < this.expiresAt;
+  }
+
+  /**
+   * Discards the cached token so the next call requests a new one.
+   * Does nothing if the cache already holds a different (newer) token.
+   */
+  invalidate(rejectedToken: string): void {
+    if (this.accessToken === rejectedToken) {
+      this.accessToken = null;
     }
-
-    const body = new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: this.tokens.refresh_token,
-      client_id: this.clientId,
-      client_secret: this.clientSecret,
-    });
-
-    const response = await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.tokens = null;
-      fs.rmSync(this.tokensPath, { force: true });
-      throw new Error(`Token refresh failed (${response.status}): ${errorText}. Please re-authorize.`);
-    }
-
-    const data = (await response.json()) as TokenResponse;
-    this.tokens = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token || this.tokens.refresh_token,
-      expires_at: Date.now() + data.expires_in * 1000 - 60000,
-      token_type: data.token_type,
-    };
-    this.saveTokens();
-  }
-
-  hasValidTokens(): boolean {
-    return this.tokens !== null;
-  }
-
-  isTokenExpired(): boolean {
-    if (!this.tokens) return true;
-
-    return Date.now() >= this.tokens.expires_at;
   }
 
   async getValidAccessToken(): Promise<string> {
-    if (!this.tokens) {
-      throw new Error("Not authorized. Please run 'npx sharesight-mcp-auth' first.");
+    if (this.hasToken()) {
+      return this.accessToken!;
     }
 
-    if (this.isTokenExpired()) {
-      await this.refreshTokens();
-    }
+    // Share one in-flight request between concurrent callers
+    this.pending ??= this.fetchToken().finally(() => {
+      this.pending = null;
+    });
 
-    return this.tokens.access_token;
+    return this.pending;
   }
 }

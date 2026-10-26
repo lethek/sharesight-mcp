@@ -6,27 +6,14 @@ A Model Context Protocol (MCP) server that provides AI assistants with access to
 
 ### Step 1: Get OAuth Credentials
 
-You'll need a **Client ID** and **Client Secret** from Sharesight to use this server.
+You'll need a **Client ID** and **Client Secret** from Sharesight to use this server. The server uses the OAuth client credentials grant, so it acts as the single Sharesight account that is linked to your API application.
 
 **How to get credentials:**
 - Contact Sharesight support at support@sharesight.com to request API access
 - Visit the [Sharesight API documentation](https://api.sharesight.com/doc/api/v3) for more information
 - API access may require a specific Sharesight plan
 
-### Step 2: Run One-Time Authentication
-
-```bash
-npx github:Haizzz/sharesight-mcp auth
-```
-
-The CLI will:
-1. Prompt for your Client ID and Client Secret
-2. Display a URL to open in your browser
-3. Ask you to log in to Sharesight and authorize the app
-4. Prompt you to paste the authorization code
-5. Save tokens locally (they refresh automatically)
-
-### Step 3: Add MCP Server Configuration
+### Step 2: Add MCP Server Configuration
 
 Add to your Claude Desktop config file:
 
@@ -64,7 +51,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **27 tools** covering all Sharesight v3 API endpoints:
+This server exposes **28 tools** covering all Sharesight v3 API endpoints:
 
 ### Portfolio Management
 | Tool | Description |
@@ -121,7 +108,6 @@ This server exposes **27 tools** covering all Sharesight v3 API endpoints:
 | `show_coupon_code` | View applied promotional coupon code |
 | `apply_coupon_code` | Apply a promotional coupon code |
 | `delete_coupon_code` | Remove applied coupon code |
-| `revoke_api_access` | Disconnect API access (invalidates all tokens) |
 
 ## Install from Source
 
@@ -132,11 +118,7 @@ npm install
 npm run build
 ```
 
-Then run auth and configure:
-
-```bash
-node dist/index.js auth
-```
+Then configure:
 
 ```json
 {
@@ -153,13 +135,9 @@ node dist/index.js auth
 }
 ```
 
-## Token Storage
+## Token Handling
 
-OAuth tokens are stored at:
-- **Linux/macOS:** `~/.sharesight-mcp/tokens.json`
-- **Windows:** `%USERPROFILE%\.sharesight-mcp\tokens.json`
-
-Tokens refresh automatically. To re-authorize, delete the tokens file and run `sharesight-mcp auth` again.
+Access tokens are held in memory only. The server requests a new one when the current token expires, so nothing is written to disk.
 
 ## Error Handling
 

@@ -33,6 +33,8 @@ import { OAuthManager } from "./oauth.js";
 
 /** Base URL for all Sharesight API v3 endpoints */
 const API_BASE_URL = "https://api.sharesight.com/api/v3";
+const REQUEST_TIMEOUT_MS = 30000;
+const REPORT_REQUEST_TIMEOUT_MS = 180000; // performance reports can be slow on large portfolios
 
 /**
  * SharesightClient provides methods for interacting with the Sharesight API v3.
@@ -70,6 +72,7 @@ export class SharesightClient {
    * @param endpoint - API endpoint path (e.g., '/portfolios')
    * @param body - Optional request body for POST/PUT/PATCH requests
    * @param queryParams - Optional query parameters to append to the URL
+   * @param timeoutMs - Optional time limit for the whole call in milliseconds (default: REQUEST_TIMEOUT_MS)
    * @returns Promise resolving to the typed response
    * @throws Error if the API returns a non-2xx status code
    *
@@ -79,9 +82,21 @@ export class SharesightClient {
     method: string,
     endpoint: string,
     body?: unknown,
-    queryParams?: Record<string, string | number | boolean | undefined>
+    queryParams?: Record<string, string | number | boolean | undefined>,
+    timeoutMs: number = REQUEST_TIMEOUT_MS
   ): Promise<T> {
     const url = new URL(`${API_BASE_URL}${endpoint}`);
+
+    const rethrowTimeout = (error: unknown): never => {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        const outcome = method === "GET" ? "" : " The change may still have been applied; check before retrying.";
+        throw new Error(
+          `Sharesight API request timed out after ${timeoutMs / 1000}s (${method} ${endpoint}).${outcome}`,
+          { cause: error }
+        );
+      }
+      throw error;
+    };
 
     // Append query parameters, filtering out undefined values
     if (queryParams) {
@@ -92,29 +107,47 @@ export class SharesightClient {
       });
     }
 
-    const accessToken = await this.getAccessToken();
+    // One deadline for the whole call, including the 401 retry
+    const signal = AbortSignal.timeout(timeoutMs);
 
-    // Set required headers for Sharesight API
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
+    const send = async (): Promise<{ response: Response; accessToken: string }> => {
+      const accessToken = await this.getAccessToken();
+
+      // Set required headers for Sharesight API
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      };
+
+      const options: RequestInit = {
+        method,
+        headers,
+        signal,
+      };
+
+      // Add body for mutation requests
+      if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+        options.body = JSON.stringify(body);
+      }
+
+      return { response: await fetch(url.toString(), options).catch(rethrowTimeout), accessToken };
     };
 
-    const options: RequestInit = {
-      method,
-      headers,
-    };
+    // A token fetched for this call was just issued, so a 401 on it will not be fixed by another one
+    const tokenWasCached = this.oauth.hasToken();
+    const first = await send();
+    let response = first.response;
 
-    // Add body for mutation requests
-    if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-      options.body = JSON.stringify(body);
+    // The cached token may have been revoked server-side; get a new one and retry once
+    if (response.status === 401 && tokenWasCached) {
+      await response.body?.cancel();
+      this.oauth.invalidate(first.accessToken);
+      response = (await send()).response;
     }
-
-    const response = await fetch(url.toString(), options);
 
     // Handle error responses
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await response.text().catch(rethrowTimeout);
       let errorData;
       try {
         errorData = JSON.parse(errorText);
@@ -126,7 +159,7 @@ export class SharesightClient {
       );
     }
 
-    return response.json() as Promise<T>;
+    return response.json().catch(rethrowTimeout) as Promise<T>;
   }
 
   // ==========================================================================
@@ -684,7 +717,8 @@ export class SharesightClient {
       "GET",
       `/portfolios/${portfolioId}/performance_index_chart`,
       undefined,
-      options
+      options,
+      REPORT_REQUEST_TIMEOUT_MS
     );
   }
 
@@ -741,29 +775,8 @@ export class SharesightClient {
       "GET",
       `/portfolios/${portfolioId}/performance`,
       undefined,
-      queryParams
+      queryParams,
+      REPORT_REQUEST_TIMEOUT_MS
     );
-  }
-
-  // ==========================================================================
-  // User / OAuth
-  // ==========================================================================
-
-  /**
-   * Revokes all API access tokens for the user.
-   *
-   * This invalidates ALL access and refresh tokens for the user associated
-   * with the client application. Use this when a customer disconnects their
-   * account from your system.
-   *
-   * @param clientId - The OAuth client application ID
-   * @returns Promise with the API transaction details
-   *
-   * @warning This action cannot be undone. The user will need to re-authenticate.
-   */
-  async revokeApiAccess(clientId: string): Promise<BaseResponse> {
-    return this.request<BaseResponse>("POST", "/oauth/revoke", {
-      client_id: clientId,
-    });
   }
 }

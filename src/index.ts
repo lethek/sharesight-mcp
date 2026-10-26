@@ -3,9 +3,8 @@
 /**
  * Sharesight MCP Server
  *
- * A CLI tool with two commands:
+ * A CLI tool with one command:
  * - `sharesight-mcp serve` - Run the MCP server (default)
- * - `sharesight-mcp auth` - One-time OAuth authentication
  *
  * @see https://api.sharesight.com/doc/api/v3
  * @see https://modelcontextprotocol.io/
@@ -16,109 +15,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import * as readline from "readline";
 import { SharesightClient } from "./sharesight-client.js";
-import { OAuthManager } from "./oauth.js";
-
-// ============================================================================
-// Auth Command
-// ============================================================================
-
-function createReadlineInterface(): readline.Interface {
-  return readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-}
-
-function prompt(rl: readline.Interface, question: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      resolve(answer.trim());
-    });
-  });
-}
-
-async function getCredentials(): Promise<{ clientId: string; clientSecret: string }> {
-  let clientId = process.env.SHARESIGHT_CLIENT_ID?.trim() || "";
-  let clientSecret = process.env.SHARESIGHT_CLIENT_SECRET?.trim() || "";
-
-  if (clientId && clientSecret) {
-    return { clientId, clientSecret };
-  }
-
-  console.log("\n=== Sharesight One-Time Authentication ===\n");
-
-  const rl = createReadlineInterface();
-
-  if (!clientId) {
-    clientId = await prompt(rl, "Enter your Sharesight Client ID: ");
-    if (!clientId) {
-      rl.close();
-      console.error("\nError: Client ID is required.");
-      process.exit(1);
-    }
-  }
-
-  if (!clientSecret) {
-    clientSecret = await prompt(rl, "Enter your Sharesight Client Secret: ");
-    if (!clientSecret) {
-      rl.close();
-      console.error("\nError: Client Secret is required.");
-      process.exit(1);
-    }
-  }
-
-  rl.close();
-
-  return { clientId, clientSecret };
-}
-
-async function runAuth(): Promise<void> {
-  const { clientId, clientSecret } = await getCredentials();
-  const oauth = new OAuthManager({ clientId, clientSecret });
-
-  if (oauth.hasValidTokens()) {
-    console.log("\nAlready authenticated! Tokens are stored and valid.");
-    console.log("To re-authenticate, delete ~/.sharesight-mcp/tokens.json and run this again.");
-    process.exit(0);
-  }
-
-  const authUrl = oauth.getAuthorizationUrl();
-
-  console.log("\n1. Open this URL in your browser:\n");
-  console.log(`   ${authUrl}\n`);
-  console.log("2. Log in to Sharesight and authorize the application");
-  console.log("3. Copy the authorization code shown and paste it below\n");
-
-  const rl = createReadlineInterface();
-  const code = await prompt(rl, "Authorization code: ");
-  rl.close();
-
-  if (!code) {
-    console.error("\nError: No authorization code provided.");
-    process.exit(1);
-  }
-
-  try {
-    await oauth.exchangeCodeForTokens(code);
-    console.log("\nAuthentication successful!");
-    console.log("Tokens have been saved to ~/.sharesight-mcp/tokens.json");
-    console.log("\nYou can now use the Sharesight MCP server.");
-    process.exit(0);
-  } catch (error) {
-    console.error("\nAuthentication failed:", error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
-}
+import { OAuthManager, TokenRequestError } from "./oauth.js";
 
 // ============================================================================
 // Serve Command
 // ============================================================================
 
 function createOAuthManager(): OAuthManager {
-  const clientId = process.env.SHARESIGHT_CLIENT_ID;
-  const clientSecret = process.env.SHARESIGHT_CLIENT_SECRET;
+  const clientId = process.env.SHARESIGHT_CLIENT_ID?.trim();
+  const clientSecret = process.env.SHARESIGHT_CLIENT_SECRET?.trim();
 
   if (!clientId || !clientSecret) {
     console.error(
@@ -127,19 +33,7 @@ function createOAuthManager(): OAuthManager {
     process.exit(1);
   }
 
-  const oauth = new OAuthManager({ clientId, clientSecret });
-
-  if (!oauth.hasValidTokens()) {
-    console.error(
-      "Error: Not authenticated. Please run the authentication setup first:\n\n" +
-      "  sharesight-mcp auth\n\n" +
-      "This only needs to be done once. After authentication, tokens are saved\n" +
-      "and the MCP server will use them automatically."
-    );
-    process.exit(1);
-  }
-
-  return oauth;
+  return new OAuthManager({ clientId, clientSecret });
 }
 
 function formatResult(result: unknown) {
@@ -817,36 +711,31 @@ function registerTools(server: McpServer, client: SharesightClient) {
       }
     }
   );
-
-  // ==================== OAuth ====================
-
-  server.registerTool(
-    "revoke_api_access",
-    {
-      description: "Disconnects API access for the user. Invalidates ALL access and refresh tokens.",
-      inputSchema: z.object({
-        client_id: z.string().describe("The client application ID"),
-      }),
-    },
-    async (args) => {
-      try {
-        const result = await client.revokeApiAccess(args.client_id);
-
-        return formatResult(result);
-  } catch (error) {
-        return formatError(error);
-      }
-    }
-  );
 }
 
 async function runServe(): Promise<void> {
   const oauth = createOAuthManager();
+
+  try {
+    await oauth.getValidAccessToken();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    // Wrong credentials will never recover; other failures (network, 5xx) may, so retry on the first tool call
+    if (error instanceof TokenRequestError && error.isCredentialError) {
+      console.error(`Error: ${message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.error(`Warning: could not get an access token at startup, will retry on first use: ${message}`);
+  }
+
   const client = new SharesightClient(oauth);
 
   const server = new McpServer({
     name: "sharesight-mcp",
-    version: "1.0.0",
+    version: "2.0.0",
   });
 
   registerTools(server, client);
@@ -869,10 +758,8 @@ Usage:
 
 Commands:
   serve   Run the MCP server (default)
-  auth    One-time OAuth authentication setup
 
 Examples:
-  sharesight-mcp auth     # Authenticate with Sharesight
   sharesight-mcp serve    # Start the MCP server
   sharesight-mcp          # Same as 'serve'
 `);
@@ -882,9 +769,6 @@ async function main(): Promise<void> {
   const command = process.argv[2] || "serve";
 
   switch (command) {
-    case "auth":
-      await runAuth();
-      break;
     case "serve":
       await runServe();
       break;
