@@ -133,7 +133,7 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 |------|------|-------------|
 | `get_performance_report` | Read | Detailed performance breakdown with gains analysis |
 | `get_performance_index_chart` | Read | Chart data for visualizing portfolio performance |
-| `list_portfolio_reports` | Read | List the reports saved for a portfolio |
+| `list_portfolio_reports` | Read | List the tax or tools reports saved for a portfolio |
 | `get_portfolio_overview` | Read | Value and gains of each holding, optionally grouped |
 | `get_portfolio_totals` | Read | Portfolio totals |
 | `get_portfolio_benchmark` | Read | Compare a portfolio with a benchmark instrument |

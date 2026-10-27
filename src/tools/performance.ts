@@ -84,11 +84,12 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       annotations: READ_ONLY,
       inputSchema: z.object({
         portfolio_id: z.number().describe("The portfolio ID"),
+        type: z.enum(["tax", "tools"]).describe("Which reports to list: tax or tools"),
       }),
     },
     async (args) => {
       try {
-        return formatResult(await client.listPortfolioReports(args.portfolio_id));
+        return formatResult(await client.listPortfolioReports(args.portfolio_id, args.type));
       } catch (error) {
         return formatError(error);
       }
