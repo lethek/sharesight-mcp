@@ -8,7 +8,8 @@
  * @module oauth
  */
 
-const TOKEN_URL = "https://api.sharesight.com/oauth2/token";
+/** Where the Sharesight API lives. Both the token endpoint and the v3 API are under it. */
+export const DEFAULT_BASE_URL = "https://api.sharesight.com";
 
 interface TokenResponse {
   access_token: string;
@@ -37,18 +38,22 @@ export class TokenRequestError extends Error {
 export interface OAuthManagerOpts {
   clientId: string;
   clientSecret: string;
+  /** Replaces https://api.sharesight.com, for tests or a proxy */
+  baseUrl?: string;
 }
 
 export class OAuthManager {
   private clientId: string;
   private clientSecret: string;
+  private tokenUrl: string;
   private accessToken: string | null = null;
   private expiresAt = 0;
   private pending: Promise<string> | null = null;
 
-  constructor({ clientId, clientSecret }: OAuthManagerOpts) {
+  constructor({ clientId, clientSecret, baseUrl = DEFAULT_BASE_URL }: OAuthManagerOpts) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
+    this.tokenUrl = `${baseUrl.replace(/\/+$/, "")}/oauth2/token`;
   }
 
   private async fetchToken(): Promise<string> {
@@ -58,7 +63,7 @@ export class OAuthManager {
       client_secret: this.clientSecret,
     });
 
-    const response = await fetch(TOKEN_URL, {
+    const response = await fetch(this.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",

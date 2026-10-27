@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { OAuthManager, TokenRequestError } from "./oauth.js";
+import { OAuthManager, TokenRequestError } from "../src/oauth.js";
 import { TOKEN_URL, jsonResponse, stubFetch, tokenResponse } from "./test-helpers.js";
 
 describe("OAuthManager", () => {

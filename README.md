@@ -70,14 +70,14 @@ This server exposes **28 tools** covering all Sharesight v3 API endpoints:
 |------|-------------|
 | `list_portfolios` | List all user portfolios with optional consolidated view |
 | `get_portfolio` | Get detailed portfolio information by ID |
-| `list_portfolio_holdings` | List all holdings within a specific portfolio |
+| `list_portfolio_holdings` | List the holdings within a specific portfolio, with [filtering and paging](#filtering-and-paging-holdings) |
 | `get_portfolio_user_setting` | Get user display preferences for a portfolio |
 | `update_portfolio_user_setting` | Update chart type, grouping, and other display settings |
 
 ### Holdings Management
 | Tool | Description |
 |------|-------------|
-| `list_holdings` | List all holdings across all portfolios |
+| `list_holdings` | List holdings across all portfolios, with [filtering and paging](#filtering-and-paging-holdings) |
 | `get_holding` | Get holding details with optional cost base and historical values |
 | `update_holding` | Update holding settings (DRP configuration) |
 | `delete_holding` | Remove a holding from a portfolio |
@@ -120,6 +120,32 @@ This server exposes **28 tools** covering all Sharesight v3 API endpoints:
 | `show_coupon_code` | View applied promotional coupon code |
 | `apply_coupon_code` | Apply a promotional coupon code |
 | `delete_coupon_code` | Remove applied coupon code |
+
+### Filtering and paging holdings
+
+`list_holdings` and `list_portfolio_holdings` return one page of holdings at a time, because a full list can be too large for an assistant to read. A page is filled until the response reaches a size limit (30,000 characters by default, see [Settings](#settings)), so the number of holdings per page varies. They accept these optional inputs:
+
+| Input | Effect |
+|-------|--------|
+| `search` | Only holdings whose instrument code or name contains the text, ignoring case (at most 100 characters) |
+| `market_code` | Only holdings on this market, for example `ASX` or `NASDAQ` |
+| `valid_position` | `true` for holdings with a current position, `false` for closed ones |
+| `limit` | Most holdings in one page, 1 to 200. A page is also cut short when it fills the size limit. |
+| `cursor` | The `next_cursor` from the previous page. Leave out for the first page. |
+| `portfolio_id` | `list_holdings` only: only holdings in this portfolio |
+
+The result keeps Sharesight's other fields and adds a `pagination` object with `total` (matches before paging), `returned`, `has_more` and `next_cursor`, which is `null` on the last page. Pass `next_cursor` as `cursor` to get the next page. The cursor carries the filters, so they need not be repeated, and repeating them with different values is an error. A cursor is signed, so an altered one is refused, and it only works for the query it came from.
+
+Sharesight offers no filter or paging options for holdings, so the server fetches the full list and applies these itself. The first page always fetches fresh from Sharesight and names that list a snapshot, whose id the cursor carries. Later pages use the same snapshot from a short-lived in-memory cache, so a walk sees one consistent list and other calls cannot change it under a walk in progress. If the cache has lost the snapshot, the next page fetches again and carries on from the same position, so the data may have changed in between. Results that fit in one page are not cached. Holdings are ordered by id so pages stay stable.
+
+### Settings
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MCP_MAX_RESPONSE_CHARS` | `30000` | Size limit for one page of a paged list, in characters (at least 5000). Keep it well under your client's tool output limit, which in Claude Code defaults to 25,000 tokens. The default is about a third of the size that exceeded that limit in testing. |
+| `MCP_CACHE_TTL_SECONDS` | `60` | How long the holdings list is cached for later pages. `0` turns the cache off. |
+| `MCP_CURSOR_SECRET` | random | Signs cursors. By default each process picks its own, so a cursor stops working after a restart and does not work on another instance. Set the same value on every instance to avoid that. |
+| `SHARESIGHT_BASE_URL` | `https://api.sharesight.com` | Replaces the Sharesight address, for tests or a proxy. It must be `https`, except that `http` is accepted for localhost, because your client secret is sent to this address. It cannot have a query or fragment. |
 
 ## Install from Source
 
