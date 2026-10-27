@@ -56,6 +56,23 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
   );
 
   server.registerTool(
+    "list_groups",
+    {
+      description:
+        "Lists the ways to group a report: the built-in groupings (market, currency, country and so on) and the user's custom groups. A custom group's id is the custom_group_id the report tools take, with grouping set to custom_group (v2 API)",
+      annotations: READ_ONLY,
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        return formatResult(await client.listGroups());
+      } catch (error) {
+        return formatError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "list_countries",
     {
       description: "Retrieves Sharesight country definitions",

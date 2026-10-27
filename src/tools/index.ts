@@ -6,6 +6,7 @@ import type { AttachmentSettings } from "./attachments.js";
 import { registerAccountReadTools, registerAccountWriteTools } from "./account.js";
 import { registerAdjustmentReadTools, registerAdjustmentWriteTools } from "./adjustments.js";
 import { registerConfirmationReadTools, registerConfirmationWriteTools } from "./confirmations.js";
+import { registerCashAccountReadTools, registerCashAccountWriteTools } from "./cash-accounts.js";
 import { registerCouponRateReadTools, registerCouponRateWriteTools } from "./coupon-rates.js";
 import { registerCustomInvestmentPriceReadTools, registerCustomInvestmentPriceWriteTools } from "./custom-investment-prices.js";
 import { registerCustomInvestmentReadTools, registerCustomInvestmentWriteTools } from "./custom-investments.js";
@@ -42,6 +43,7 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
   registerAdjustmentReadTools(server, client);
   registerLabelReadTools(server, client);
   registerConfirmationReadTools(server, client, unconfirmed);
+  registerCashAccountReadTools(server, client);
   registerPerformanceReadTools(server, client);
   registerReportReadTools(server, client);
   registerAccountReadTools(server, client);
@@ -60,5 +62,6 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
   registerAdjustmentWriteTools(server, client);
   registerLabelWriteTools(server, client);
   registerConfirmationWriteTools(server, client);
+  registerCashAccountWriteTools(server, client);
   registerAccountWriteTools(server, client);
 }

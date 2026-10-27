@@ -165,6 +165,22 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
       path: /^\/api\/v2\/portfolios\/\d+\/trades\.json$/,
       handle: ({ send }) => send(200, { trades: [{ id: 2, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 88 }, { id: null, state: "unconfirmed", company_event_id: 89 }] }),
     },
+    // v2: cash accounts and their transactions. Deleting answers 204 with no body, like Sharesight.
+    {
+      methods: ["GET"],
+      path: /^\/api\/v2\/(groups\.json|cash_accounts\.json|portfolios\/\d+\/cash_accounts\.json|cash_accounts\/\d+\.json|cash_accounts\/\d+\/cash_account_transactions\.json)$/,
+      handle: echoQuery,
+    },
+    {
+      methods: ["POST", "PUT"],
+      path: /^\/api\/v2\/(portfolios\/\d+\/cash_accounts\.json|cash_accounts\/\d+\.json|cash_accounts\/\d+\/cash_account_transactions\.json|cash_account_transactions\/\d+\.json)$/,
+      handle: acceptWrite,
+    },
+    {
+      methods: ["DELETE"],
+      path: /^\/api\/v2\/(cash_accounts|cash_account_transactions)\/\d+\.json$/,
+      handle: ({ send }) => send(204),
+    },
     {
       methods: ["GET"],
       path: /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|user_instruments\.json|holdings\/\d+\/rejected_trades\.json)$/,
