@@ -20,7 +20,8 @@ sharesight-mcp/
 │   ├── tools/                # Tool registration, one file per feature area
 │   │   ├── index.ts          # registerTools(): all read tools, then the write tools unless read-only
 │   │   ├── common.ts         # formatResult, formatError and the annotation constants
-│   │   ├── portfolios.ts, holdings.ts, custom-investments.ts, custom-investment-prices.ts,
+│   │   ├── attachments.ts    # Attachment inputs and withAttachment(): base64 or file path to Sharesight's attachment fields
+│   │   ├── portfolios.ts, holdings.ts, trades.ts, payouts.ts, custom-investments.ts, custom-investment-prices.ts,
 │   │   │   coupon-rates.ts, performance.ts, account.ts   # one area each, read tools and write tools
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
@@ -60,7 +61,7 @@ The main CLI entry point with one command:
 Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient` and `HoldingsLister`. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those two, which `runServe` builds once.
 
 ### `src/tools/`
-Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.
+Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. Trade and payout create/update tools take a `PathPolicy` because `attachment_path` reads a file on the server's machine: with `MCP_DATA_ROOT` set, paths are relative to it and confined to it (symlinks resolved first), over both transports; without it, only stdio may read any path (`unrestricted`) and HTTP refuses. v3 has no attachment download endpoint (v2 has `GET /documents/:id.json`), and none is exposed yet. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.
 
 ### `src/http.ts`
 Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `MCP_PORT`, `MCP_HOST` and `MCP_AUTH_TOKEN`; the generic `PORT` and `HOST` are deliberately not read. Stdio uses `serveStdio` so it also serves both protocol eras, and `serve` rejects unknown options before it contacts the token endpoint.

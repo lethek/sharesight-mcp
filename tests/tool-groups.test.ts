@@ -13,6 +13,14 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_holdings", "list_portfolio_holdings", "get_holding"],
     write: ["update_holding", "delete_holding"],
   },
+  trades: {
+    read: ["list_trades", "list_holding_trades", "get_trade"],
+    write: ["create_trade", "update_trade", "delete_trade"],
+  },
+  payouts: {
+    read: ["list_payouts", "get_payout"],
+    write: ["create_payout", "update_payout", "delete_payout"],
+  },
   "custom investments": {
     read: ["list_custom_investments", "get_custom_investment"],
     write: ["create_custom_investment", "update_custom_investment", "delete_custom_investment"],
@@ -25,8 +33,17 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_coupon_rates"],
     write: ["create_coupon_rate", "update_coupon_rate", "delete_coupon_rate"],
   },
-  "performance reports": {
-    read: ["get_performance_report", "get_performance_index_chart"],
+  "performance and portfolio reports": {
+    read: [
+      "get_performance_report",
+      "get_performance_index_chart",
+      "list_portfolio_reports",
+      "get_portfolio_overview",
+      "get_portfolio_totals",
+      "get_portfolio_benchmark",
+      "get_portfolio_value",
+      "get_portfolio_value_data",
+    ],
     write: [],
   },
   "account and reference": {
@@ -35,7 +52,10 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
   },
 };
 
-const READS = Object.values(AREAS).flatMap((area) => area.read).sort();
+/** Update tools that can replace or remove an attachment, which cannot be read back, so they are marked destructive. */
+const OVERWRITES = ["update_trade", "update_payout"];
+
+const READS =Object.values(AREAS).flatMap((area) => area.read).sort();
 const WRITES = Object.values(AREAS).flatMap((area) => area.write).sort();
 
 interface ListedTool {
@@ -50,7 +70,7 @@ describe("tool groups", () => {
   test("the server offers exactly the grouped tools", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       assert.deepEqual(names(await listTools(request)), [...READS, ...WRITES].sort());
-      assert.equal(READS.length + WRITES.length, 28);
+      assert.equal(READS.length + WRITES.length, 45);
     });
   });
 
@@ -73,6 +93,8 @@ describe("tool groups", () => {
           assert.deepEqual(annotations, { readOnlyHint: true }, `${name} ${hints}`);
         } else if (/^(create|apply)_/.test(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, `${name} ${hints}`);
+        } else if (OVERWRITES.includes(name)) {
+          assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, `${name} ${hints}`);
         } else if (/^update_/.test(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, `${name} ${hints}`);
         } else if (/^delete_/.test(name)) {
@@ -84,11 +106,11 @@ describe("tool groups", () => {
     });
   });
 
-  test("only the delete tools are marked destructive", async () => {
+  test("only the delete tools and the attachment-overwriting updates are marked destructive", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       const destructive = (await listTools(request)).filter((tool) => tool.annotations?.destructiveHint === true);
 
-      assert.deepEqual(names(destructive), WRITES.filter((name) => name.startsWith("delete_")));
+      assert.deepEqual(names(destructive), WRITES.filter((name) => name.startsWith("delete_") || OVERWRITES.includes(name)).sort());
     });
   });
 });

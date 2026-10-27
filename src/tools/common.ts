@@ -22,5 +22,8 @@ export const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentH
 /** Changes data in place. Repeating the call with the same input leaves the same result. */
 export const UPDATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true } as const;
 
+/** Changes data in place, but can discard content that cannot be read back, such as a replaced or removed attachment */
+export const OVERWRITE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true } as const;
+
 /** Removes data */
 export const DELETE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true } as const;
