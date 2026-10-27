@@ -28,7 +28,7 @@ sharesight-mcp/
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime
 │   ├── paged-list.ts         # PagedLister<T>: generic fetch-once, filter, cache and size-budgeted paging with signed cursors; pageItems()
-│   ├── holdings-page.ts      # Holding filters and ordering, and pageHoldings()
+│   ├── holdings-page.ts      # Holding filters and ordering
 │   ├── holdings-list.ts      # HoldingsLister: PagedLister for list_holdings / list_portfolio_holdings
 │   ├── unconfirmed-list.ts   # createUnconfirmedLister(): PagedLister for the v2 unconfirmed payout and trade lists
 │   ├── cursor.ts             # CursorCodec: signed, stateless paging cursors

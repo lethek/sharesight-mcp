@@ -36,6 +36,6 @@ export function createUnconfirmedLister(options: UnconfirmedListerOptions): Unco
   return new PagedLister(options, {
     matches: (item) => item.state === "unconfirmed",
     compare: compareUnconfirmed,
-    isFilters: (value): value is NoFilters => typeof value === "object" && value !== null,
+    isFilters: (value): value is NoFilters => typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0,
   });
 }

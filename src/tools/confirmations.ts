@@ -43,7 +43,7 @@ function identify(companyEventId: number | undefined, paidOn: string | undefined
 }
 
 const PAGING_HELP =
-  "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself. Later pages come from the list the first page found, so confirming or rejecting items between pages does not move the pages.";
+  "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself. Later pages come from the list the first page found while the server still holds it. If it has expired, the list is fetched again and items confirmed or rejected since then shift the pages, so after confirming or rejecting, start again from the first page.";
 
 const pagingInput = {
   limit: z.number().int().min(1).max(200).optional().describe("Most items to return in one page (maximum 200). A page is also cut short when it fills the response size limit."),
@@ -145,6 +145,10 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
         return formatFailure("Give reinvestment or skip_reinvestment, not both.");
       }
 
+      if (reinvestment && company_event_id === undefined) {
+        return formatFailure("A reinvestment belongs to a dividend, so give company_event_id with it. An interest payout named by paid_on has none.");
+      }
+
       try {
         if (company_event_id !== undefined && !reinvestment && !skip_reinvestment) {
           // Confirming a payout without a reinvestment removes the holding's pending reinvestment trade for it, so make the caller choose
@@ -201,10 +205,19 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
       }
 
       try {
+        // Sharesight answers a rejection by paid_on with a 500 even when it works, so the payout must be seen pending first for the check after it to mean anything
+        if (paid_on !== undefined && !(await hasPendingPayout(client, holding_id, paid_on))) {
+          return formatFailure(`Holding ${holding_id} has no unconfirmed payout paid on ${paid_on}.`);
+        }
+      } catch (error) {
+        return formatError(error);
+      }
+
+      try {
         return formatResult(await client.setPayoutStateV2({ holding_id, company_event_id, paid_on, state: "rejected" }));
       } catch (error) {
-        // Sharesight answers a rejection by paid_on with a 500 even though it rejects the payout, so look before reporting a failure
-        if (paid_on !== undefined && (await noPendingPayout(client, holding_id, paid_on))) {
+        // A failed check counts as still pending, so the error is reported
+        if (paid_on !== undefined && !(await hasPendingPayout(client, holding_id, paid_on).catch(() => true))) {
           return formatResult({
             rejected: true,
             note: "Sharesight reported an error, but no unconfirmed payout remains on that date, so it is rejected.",
@@ -217,13 +230,9 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
   );
 }
 
-/** True when the holding has no unconfirmed payout on that date. False when there is one, or when the check itself fails. */
-async function noPendingPayout(client: SharesightClient, holdingId: number, paidOn: string): Promise<boolean> {
-  try {
-    const payouts = await client.listHoldingPayoutsV2(holdingId, { start_date: paidOn, end_date: paidOn });
+/** Whether the holding has an unconfirmed payout on that date */
+async function hasPendingPayout(client: SharesightClient, holdingId: number, paidOn: string): Promise<boolean> {
+  const payouts = await client.listHoldingPayoutsV2(holdingId, { start_date: paidOn, end_date: paidOn });
 
-    return !itemsOf(payouts, "payouts").some((payout) => payout.state === "unconfirmed" && payout.paid_on === paidOn);
-  } catch {
-    return false;
-  }
+  return itemsOf(payouts, "payouts").some((payout) => payout.state === "unconfirmed" && payout.paid_on === paidOn);
 }

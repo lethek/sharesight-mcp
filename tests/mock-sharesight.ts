@@ -29,7 +29,8 @@ export const lastCall = (mock: MockSharesight) => ({ method: lastRequest(mock).m
 /** Ids the v2 routes treat specially, so tests can reach each case */
 export const HOLDING_WITH_PENDING_REINVESTMENT = 5; // an unconfirmed trade for company event 77
 export const HOLDING_WITH_NOTHING_PENDING = 7;
-export const HOLDING_WITH_PENDING_INTEREST = 8; // an unconfirmed interest payout on 2025-12-20
+export const HOLDING_WITH_PENDING_INTEREST = 8; // an unconfirmed interest payout on 2025-12-20, gone once a rejection is posted
+export const HOLDING_WITH_STUCK_INTEREST = 9; // an unconfirmed interest payout on 2025-12-20 that a rejection does not remove
 export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, enough to need several pages
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -139,7 +140,13 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
     {
       methods: ["GET"],
       path: /^\/api\/v2\/holdings\/\d+\/payouts\.json$/,
-      handle: ({ path, send }) => send(200, { payouts: holdingId(path) === HOLDING_WITH_PENDING_INTEREST ? [{ state: "unconfirmed", paid_on: "2025-12-20" }] : [] }),
+      handle: ({ path, send }) => {
+        const id = holdingId(path);
+        const rejected = mock.requests.some((r) => r.body?.payout?.state === "rejected" && r.body.payout.holding_id === id);
+        const pending = id === HOLDING_WITH_STUCK_INTEREST || (id === HOLDING_WITH_PENDING_INTEREST && !rejected);
+
+        send(200, { payouts: pending ? [{ state: "unconfirmed", paid_on: "2025-12-20" }] : [] });
+      },
     },
     {
       methods: ["GET"],

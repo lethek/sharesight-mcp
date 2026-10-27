@@ -4,6 +4,7 @@ import {
   HOLDING_WITH_NOTHING_PENDING as NOTHING_PENDING,
   HOLDING_WITH_PENDING_INTEREST as PENDING_INTEREST,
   HOLDING_WITH_PENDING_REINVESTMENT as PENDING_REINVESTMENT,
+  HOLDING_WITH_STUCK_INTEREST as STUCK_INTEREST,
   PORTFOLIO_WITH_LONG_LISTS as LONG_LISTS,
   type MockSharesight,
 } from "./mock-sharesight.js";
@@ -104,6 +105,16 @@ describe("unconfirmed payouts and trades", () => {
     });
   });
 
+  test("a reinvestment without company_event_id is refused", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("confirm_payout", { holding_id: PENDING_INTEREST, paid_on: "2025-12-20", reinvestment: { quantity: 1, price: 1 } });
+
+      assert.equal(result.isError, true);
+      assert.match(result.text, /company_event_id/);
+      assert.equal(posts(mock).length, 0);
+    });
+  });
+
   test("confirm_payout can name an interest payout by paid_on", async () => {
     await withServer([], {}, async (call, mock) => {
       await call("confirm_payout", { holding_id: PENDING_INTEREST, paid_on: "2025-12-20" });
@@ -120,19 +131,29 @@ describe("unconfirmed payouts and trades", () => {
     });
   });
 
-  test("rejecting by paid_on succeeds when Sharesight errors but nothing is left pending", async () => {
+  test("rejecting by paid_on succeeds when Sharesight errors but the pending payout is gone", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("reject_payout", { holding_id: NOTHING_PENDING, paid_on: "2025-12-20" });
+      const result = await call("reject_payout", { holding_id: PENDING_INTEREST, paid_on: "2025-12-20" });
 
       assert.equal(result.isError, false, result.text);
       assert.equal(result.payload.rejected, true);
-      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: NOTHING_PENDING, paid_on: "2025-12-20", state: "rejected" } });
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: PENDING_INTEREST, paid_on: "2025-12-20", state: "rejected" } });
+    });
+  });
+
+  test("rejecting by paid_on is refused, and nothing is sent, when no payout is pending on that date", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("reject_payout", { holding_id: NOTHING_PENDING, paid_on: "2025-12-20" });
+
+      assert.equal(result.isError, true);
+      assert.match(result.text, /no unconfirmed payout paid on 2025-12-20/);
+      assert.equal(posts(mock).length, 0);
     });
   });
 
   test("rejecting by paid_on reports the error when the payout is still pending", async () => {
     await withServer([], {}, async (call) => {
-      const result = await call("reject_payout", { holding_id: PENDING_INTEREST, paid_on: "2025-12-20" });
+      const result = await call("reject_payout", { holding_id: STUCK_INTEREST, paid_on: "2025-12-20" });
 
       assert.equal(result.isError, true);
       assert.match(result.text, /500/);
