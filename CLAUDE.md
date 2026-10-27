@@ -25,8 +25,10 @@ sharesight-mcp/
 │   ├── types.ts              # TypeScript interfaces for API types
 │   ├── *.test.ts             # node:test suites (oauth, client, startup, http)
 │   └── test-helpers.ts       # stubFetch and response builders shared by the tests
-├── .github/workflows/ci.yml  # Build and test on PRs and main; reusable via workflow_call
-├── scripts/                  # Build helpers (clean-test-build.mjs, used by npm test)
+├── .github/workflows/ci.yml  # Build and test on PRs; reusable via workflow_call
+├── .github/workflows/docker.yml  # Tests, then builds and publishes the image on main and v* tags
+├── Dockerfile                # Multi-stage image, runs HTTP mode as a non-root user
+├── scripts/                  # Build helpers (clean-test-build.mjs, resolve-version.mjs and its test)
 ├── tsconfig.build.json       # Used by npm run build; leaves the tests out of dist/
 ├── tsconfig.test.json        # Builds everything, tests included, into .test-build/ (gitignored)
 ├── dist/                     # Compiled output (gitignored)
@@ -107,7 +109,11 @@ npm test        # Build the tests into .test-build/ and run the node:test suites
 
 ## Versioning
 
-The git tag is the only place a release version is written. `package.json` holds the placeholder `0.0.0-dev`, and `src/version.ts` reads it at runtime for the server version. The image build replaces the placeholder with the version from a `v<semver>` tag, or `0.0.0-main.<sha>` for a main commit. Never hardcode a version in the source.
+The git tag is the only place a release version is written. `package.json` holds the placeholder `0.0.0-dev`, and `src/version.ts` reads it at runtime for the server version. `scripts/resolve-version.mjs` turns the git ref into a version (a `v<semver>` tag gives the semver, a branch gives `0.0.0-<branch>.<short sha>`, any other tag is an error), and the Dockerfile `VERSION` build arg stamps it into `package.json` with `npm version`. Never hardcode a version in the source.
+
+## Docker
+
+`.github/workflows/docker.yml` runs on pushes to `main` and on `v*` tags. It calls `ci.yml` first, then builds `linux/amd64` and `linux/arm64` and pushes to `ghcr.io/<repo>`. `ci.yml` has no push trigger of its own, because this workflow calls it. The image runs HTTP mode as the `node` user and refuses to start without `MCP_AUTH_TOKEN`. To check the Dockerfile locally, run `docker build --build-arg VERSION=1.2.3 -t sharesight-mcp:local .`.
 
 ## API Conventions
 

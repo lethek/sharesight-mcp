@@ -2,10 +2,8 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
-  # Lets later workflows (image build and publish) call this one and depend on it
+  # The Docker workflow calls this one on pushes to main and on tags, so it needs no push trigger of its own
   workflow_call:
 
 permissions:

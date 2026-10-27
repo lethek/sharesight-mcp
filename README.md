@@ -39,6 +39,16 @@ Add to your Claude Desktop config file:
 
 Restart Claude Desktop and you're ready to go!
 
+### Pinning a release
+
+Without a version, `github:lethek/sharesight-mcp` installs the latest commit on `main`, which can include unreleased changes. npx can also keep reusing a copy it cached earlier, so when an update arrives is not predictable. To stay on a release, add its tag to the package spec:
+
+```json
+"args": ["-y", "github:lethek/sharesight-mcp#v1.2.3", "serve"],
+```
+
+Releases are the `v*` tags on this repository (see [Releasing](#releasing)). To move to a newer release, change the tag. A pinned install reports its version as `0.0.0-dev`, because only the Docker images are stamped with the release version.
+
 ## Overview
 
 This MCP server enables Claude and other AI assistants to interact with Sharesight accounts, allowing natural language queries and operations on investment portfolios, holdings, custom investments, and performance reports.
@@ -161,6 +171,36 @@ The server is stateless. Each request gets a fresh server instance and there are
 Responses are streamed with a keepalive every 15 seconds, so long calls such as the performance reports (up to 180 seconds) are not cut by a proxy's idle timeout. A proxy's total request timeout should still be above 180 seconds.
 
 On SIGINT or SIGTERM the server stops accepting connections and gives in-flight requests 8 seconds to finish before cutting them.
+
+## Docker
+
+Images are published to GitHub Container Registry for `linux/amd64` and `linux/arm64`:
+
+| Tag | Published when |
+|-----|----------------|
+| `main`, `sha-<short>` | A commit is pushed to `main`. The server reports the version `0.0.0-main.<sha>`. |
+| `1.2.3`, `1.2`, `1`, `latest` | A tag `v1.2.3` is pushed. `latest` is skipped for prereleases such as `v1.2.3-rc.1`. |
+
+```bash
+docker run -d --name sharesight-mcp -p 3000:3000 \
+  -e SHARESIGHT_CLIENT_ID=your_client_id \
+  -e SHARESIGHT_CLIENT_SECRET=your_client_secret \
+  -e MCP_AUTH_TOKEN=a_long_random_token \
+  ghcr.io/lethek/sharesight-mcp:latest
+```
+
+The container runs in HTTP mode, listens on all interfaces and runs as a non-root user. It will not start without `MCP_AUTH_TOKEN`. See [HTTP Mode](#http-mode) for the other settings and for putting TLS in front of it. The image has a health check against `/healthz`.
+
+## Releasing
+
+The git tag is the only place a version is written. To release, tag a commit on `main` and push the tag:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The Docker workflow runs the tests, rejects a tag that is not `v<major>.<minor>.<patch>` or is not on `main`, and stamps the version into the image. `package.json` keeps the placeholder `0.0.0-dev`.
 
 ## Token Handling
 

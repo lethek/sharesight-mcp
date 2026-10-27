@@ -1,0 +1,84 @@
+name: Docker
+
+# Builds and publishes the container image to GHCR.
+# - A push to main publishes :main and :sha-<short>, versioned 0.0.0-main.<sha>.
+# - A v<semver> tag publishes :<version>, :<major>.<minor>, :<major> and :latest (not for prereleases).
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+# Never cancel a tag build, so a release is not lost to a later push
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+  test:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history, so a tag can be checked against main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Work out the version
+        id: version
+        run: node scripts/resolve-version.mjs >> "$GITHUB_OUTPUT"
+
+      - name: Require tagged commits to be on main
+        if: github.ref_type == 'tag'
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Tag $GITHUB_REF_NAME is not on main. Releases must be tagged from main."
+            exit 1
+          }
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # The generated version label is the branch name on main builds; use the version the server reports instead
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=branch
+            type=sha
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
