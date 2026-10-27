@@ -2,8 +2,8 @@ import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { OAuthManager } from "./oauth.js";
-import { SharesightClient } from "./sharesight-client.js";
+import { OAuthManager } from "../src/oauth.js";
+import { SharesightClient } from "../src/sharesight-client.js";
 import { TOKEN_URL, jsonResponse, stubFetch, timeoutError, tokenResponse, type FetchCall } from "./test-helpers.js";
 
 const API = "https://api.sharesight.com/api/v3";

@@ -1,6 +1,7 @@
 .git
 .github
 .test-build
+tests
 .claude
 dist
 node_modules

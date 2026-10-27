@@ -29,10 +29,8 @@ import {
   UpdatePortfolioUserSettingRequest,
   BaseResponse,
 } from "./types.js";
-import { OAuthManager } from "./oauth.js";
+import { DEFAULT_BASE_URL, OAuthManager } from "./oauth.js";
 
-/** Base URL for all Sharesight API v3 endpoints */
-const API_BASE_URL = "https://api.sharesight.com/api/v3";
 const REQUEST_TIMEOUT_MS = 30000;
 const REPORT_REQUEST_TIMEOUT_MS = 180000; // performance reports can be slow on large portfolios
 
@@ -50,14 +48,18 @@ const REPORT_REQUEST_TIMEOUT_MS = 180000; // performance reports can be slow on 
  */
 export class SharesightClient {
   private oauth: OAuthManager;
+  /** Base URL for all Sharesight API v3 endpoints */
+  private apiBaseUrl: string;
 
   /**
    * Creates a new SharesightClient instance.
    *
    * @param oauth - OAuthManager instance for authentication
+   * @param baseUrl - Replaces https://api.sharesight.com, for tests or a proxy
    */
-  constructor(oauth: OAuthManager) {
+  constructor(oauth: OAuthManager, baseUrl: string = DEFAULT_BASE_URL) {
     this.oauth = oauth;
+    this.apiBaseUrl = `${baseUrl.replace(/\/+$/, "")}/api/v3`;
   }
 
   private async getAccessToken(): Promise<string> {
@@ -85,7 +87,7 @@ export class SharesightClient {
     queryParams?: Record<string, string | number | boolean | undefined>,
     timeoutMs: number = REQUEST_TIMEOUT_MS
   ): Promise<T> {
-    const url = new URL(`${API_BASE_URL}${endpoint}`);
+    const url = new URL(`${this.apiBaseUrl}${endpoint}`);
 
     const rethrowTimeout = (error: unknown): never => {
       if (error instanceof Error && error.name === "TimeoutError") {

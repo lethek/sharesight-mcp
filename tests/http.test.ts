@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { assertAuthConfigured, endpointUrl, isLoopbackHost, respondToFailure, shutdownHttpServer, startHttpServer, stripBrackets } from "./http.js";
+import { assertAuthConfigured, endpointUrl, isLoopbackHost, respondToFailure, shutdownHttpServer, startHttpServer, stripBrackets } from "../src/http.js";
 
 const TOKEN = "test-token";
 const WAIT_MS = 10_000;

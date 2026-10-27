@@ -2,10 +2,10 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { resolveVersion } from "./resolve-version.mjs";
+import { resolveVersion } from "../../scripts/resolve-version.mjs";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
-const script = fileURLToPath(new URL("./resolve-version.mjs", import.meta.url));
+const script = fileURLToPath(new URL("../../scripts/resolve-version.mjs", import.meta.url));
 
 describe("resolveVersion", () => {
   test("a version tag gives its version without the v", () => {

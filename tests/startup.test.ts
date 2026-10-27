@@ -5,22 +5,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { VERSION } from "./version.js";
+import { VERSION } from "../src/version.js";
+import { inheritedEnv } from "./server-env.js";
 
-const indexPath = fileURLToPath(new URL("./index.js", import.meta.url));
+const indexPath = fileURLToPath(new URL("../src/index.js", import.meta.url));
 const STARTUP_LIMIT_MS = 15_000;
-const SERVER_ENV = ["MCP_HOST", "MCP_PORT", "MCP_AUTH_TOKEN", "MCP_TRANSPORT"];
-
-/** The parent environment without the server's own settings, so a developer's exported values can't change the result. */
-function inheritedEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-
-  for (const name of SERVER_ENV) {
-    delete env[name];
-  }
-
-  return env;
-}
 
 interface Run {
   exitCode: number | null;
@@ -154,6 +143,14 @@ describe("serve startup", () => {
       ["an out of range MCP_PORT", { MCP_PORT: "70000" }, ["--http"], /MCP_PORT must be an integer/],
       ["a mistyped flag", {}, ["--htpp"], /Unknown option for serve: --htpp/],
       ["an unknown MCP_TRANSPORT", { MCP_TRANSPORT: "streamable-http" }, [], /MCP_TRANSPORT must be "stdio" or "http"/],
+      ["a non-numeric MCP_MAX_RESPONSE_CHARS", { MCP_MAX_RESPONSE_CHARS: "big" }, [], /MCP_MAX_RESPONSE_CHARS must be a whole number of at least 5000/],
+      ["a too small MCP_MAX_RESPONSE_CHARS", { MCP_MAX_RESPONSE_CHARS: "100" }, [], /MCP_MAX_RESPONSE_CHARS must be a whole number of at least 5000/],
+      ["a negative MCP_CACHE_TTL_SECONDS", { MCP_CACHE_TTL_SECONDS: "-1" }, [], /MCP_CACHE_TTL_SECONDS must be a whole number of at least 0/],
+      ["a SHARESIGHT_BASE_URL that is not a URL", { SHARESIGHT_BASE_URL: "not a url" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
+      ["a SHARESIGHT_BASE_URL that is not http", { SHARESIGHT_BASE_URL: "ftp://example.com" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
+      ["a SHARESIGHT_BASE_URL with a query", { SHARESIGHT_BASE_URL: "https://proxy.example/sharesight?team=a" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
+      ["a SHARESIGHT_BASE_URL with a fragment", { SHARESIGHT_BASE_URL: "https://proxy.example/sharesight#top" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
+      ["a plain http SHARESIGHT_BASE_URL for another host", { SHARESIGHT_BASE_URL: "http://api.sharesight.com" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
       ["--http together with MCP_TRANSPORT=stdio", { MCP_TRANSPORT: "stdio" }, ["--http"], /--http conflicts with MCP_TRANSPORT=stdio/],
     ];
 

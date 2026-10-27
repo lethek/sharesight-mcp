@@ -17,10 +17,20 @@ import { McpServer } from "@modelcontextprotocol/server";
 import type { Server } from "node:http";
 import { z } from "zod";
 import { SharesightClient } from "./sharesight-client.js";
-import { OAuthManager, TokenRequestError } from "./oauth.js";
-import { MCP_PATH, assertAuthConfigured, endpointUrl, shutdownHttpServer, startHttpServer, type HttpServerOptions } from "./http.js";
+import { DEFAULT_BASE_URL, OAuthManager, TokenRequestError } from "./oauth.js";
+import { MCP_PATH, assertAuthConfigured, endpointUrl, isLoopbackHost, shutdownHttpServer, startHttpServer, type HttpServerOptions } from "./http.js";
 import { errorMessage } from "./error-message.js";
 import { VERSION } from "./version.js";
+import { MemoryCache } from "./cache.js";
+import { CursorCodec } from "./cursor.js";
+import { HoldingsLister, MAX_SEARCH_LENGTH } from "./holdings-list.js";
+
+const MAX_LIMIT = 200;
+const DEFAULT_MAX_RESPONSE_CHARS = 30_000;
+const MIN_MAX_RESPONSE_CHARS = 5_000;
+const DEFAULT_CACHE_TTL_SECONDS = 60;
+/** Each entry is a whole holdings list, so keep few: enough for several walks at once, not enough to hold much memory */
+const MAX_CACHED_LISTS = 20;
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const DEFAULT_HTTP_PORT = 3000;
@@ -29,7 +39,30 @@ const DEFAULT_HTTP_PORT = 3000;
 // Serve Command
 // ============================================================================
 
-function createOAuthManager(): OAuthManager {
+/**
+ * Reads SHARESIGHT_BASE_URL, which replaces https://api.sharesight.com for tests or a proxy. The client secret is sent to it, so
+ * plain http is only accepted for this machine.
+ */
+function readBaseUrl(env: NodeJS.ProcessEnv): string {
+  const text = env.SHARESIGHT_BASE_URL?.trim() || DEFAULT_BASE_URL;
+
+  try {
+    const url = new URL(text);
+
+    // A query or fragment would end up in the middle of the endpoint paths added after it
+    const hasQueryOrFragment = url.search !== "" || url.hash !== "";
+
+    if (!hasQueryOrFragment && (url.protocol === "https:" || (url.protocol === "http:" && isLoopbackHost(url.hostname)))) {
+      return text;
+    }
+  } catch {
+    // Reported below with the other invalid values
+  }
+
+  throw new Error(`SHARESIGHT_BASE_URL must be an https URL, or an http URL for localhost, without a query or fragment, got "${text}".`);
+}
+
+function createOAuthManager(baseUrl: string): OAuthManager {
   const clientId = process.env.SHARESIGHT_CLIENT_ID?.trim();
   const clientSecret = process.env.SHARESIGHT_CLIENT_SECRET?.trim();
 
@@ -40,7 +73,7 @@ function createOAuthManager(): OAuthManager {
     process.exit(1);
   }
 
-  return new OAuthManager({ clientId, clientSecret });
+  return new OAuthManager({ clientId, clientSecret, baseUrl });
 }
 
 function formatResult(result: unknown) {
@@ -51,7 +84,19 @@ function formatError(error: unknown) {
   return { content: [{ type: "text" as const, text: `Error: ${errorMessage(error)}` }], isError: true };
 }
 
-function registerTools(server: McpServer, client: SharesightClient) {
+/** Filter and paging inputs shared by the holdings list tools. Sharesight has no such parameters, so they are applied here. */
+const holdingListOptions = {
+  search: z.string().max(MAX_SEARCH_LENGTH).optional().describe(`Only holdings whose instrument code or name contains this text (case-insensitive, at most ${MAX_SEARCH_LENGTH} characters)`),
+  market_code: z.string().optional().describe("Only holdings on this market, for example ASX or NASDAQ"),
+  valid_position: z.boolean().optional().describe("true for holdings with a current position, false for closed ones"),
+  limit: z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Most holdings to return in one page (maximum ${MAX_LIMIT}). A page is also cut short when it fills the response size limit.`),
+  cursor: z.string().nullish().describe("The pagination.next_cursor from the previous page, to get the next page. Leave out for the first page. The cursor carries the filters."),
+};
+
+const HOLDINGS_PAGING_HELP =
+  "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself.";
+
+function registerTools(server: McpServer, client: SharesightClient, holdings: HoldingsLister) {
   // ==================== Portfolios ====================
 
   server.registerTool(
@@ -97,17 +142,20 @@ function registerTools(server: McpServer, client: SharesightClient) {
   server.registerTool(
     "list_portfolio_holdings",
     {
-    description: "Retrieves all holdings for a specific portfolio",
+    description: `Retrieves the holdings for a specific portfolio. ${HOLDINGS_PAGING_HELP}`,
       inputSchema: z.object({
         portfolio_id: z.number().describe("The portfolio ID"),
         consolidated: z.boolean().optional().describe("True if a consolidated view is requested"),
+        ...holdingListOptions,
       }),
     },
     async (args) => {
       try {
-        const result = await client.listPortfolioHoldings(args.portfolio_id, args.consolidated);
+        // portfolio_id selects the endpoint here, so it must not also filter the holdings (a consolidated view spans portfolios)
+        const { portfolio_id, consolidated, ...options } = args;
+        const scope = `list_portfolio_holdings:${portfolio_id}:${consolidated ?? false}`;
 
-        return formatResult(result);
+        return formatResult(await holdings.list(scope, () => client.listPortfolioHoldings(portfolio_id, consolidated), options));
       } catch (error) {
         return formatError(error);
       }
@@ -169,14 +217,15 @@ function registerTools(server: McpServer, client: SharesightClient) {
   server.registerTool(
     "list_holdings",
   {
-    description: "Retrieves a list of all holdings across all portfolios",
-      inputSchema: z.object({}),
+    description: `Retrieves holdings across all portfolios. ${HOLDINGS_PAGING_HELP}`,
+      inputSchema: z.object({
+        portfolio_id: z.number().optional().describe("Only holdings in this portfolio"),
+        ...holdingListOptions,
+      }),
     },
-    async () => {
+    async (args) => {
       try {
-        const result = await client.listHoldings();
-
-        return formatResult(result);
+        return formatResult(await holdings.list("list_holdings", () => client.listHoldings(), args));
       } catch (error) {
         return formatError(error);
       }
@@ -757,20 +806,57 @@ function readServeConfig(args: string[], env: NodeJS.ProcessEnv): HttpConfig | u
   return { host, port, authToken };
 }
 
+interface ListingSettings {
+  maxResponseChars: number;
+  cacheTtlSeconds: number;
+  cursorSecret?: string;
+}
+
+/** Reads the settings for paged list tools, which apply to both transports. */
+function readListingSettings(env: NodeJS.ProcessEnv): ListingSettings {
+  const integer = (name: string, fallback: number, min: number): number => {
+    const text = env[name]?.trim() || String(fallback);
+    const value = Number(text);
+
+    if (!/^\d+$/.test(text) || value < min) {
+      throw new Error(`${name} must be a whole number of at least ${min}, got "${text}".`);
+    }
+
+    return value;
+  };
+
+  return {
+    maxResponseChars: integer("MCP_MAX_RESPONSE_CHARS", DEFAULT_MAX_RESPONSE_CHARS, MIN_MAX_RESPONSE_CHARS),
+    cacheTtlSeconds: integer("MCP_CACHE_TTL_SECONDS", DEFAULT_CACHE_TTL_SECONDS, 0),
+    cursorSecret: env.MCP_CURSOR_SECRET?.trim() || undefined,
+  };
+}
+
 async function runServe(): Promise<void> {
   // Check the options before anything slow, so a typo is reported straight away
   let httpConfig: HttpConfig | undefined;
+  let listing: ListingSettings;
+  let baseUrl: string;
 
   try {
     httpConfig = readServeConfig(process.argv.slice(3), process.env);
+    listing = readListingSettings(process.env);
+    baseUrl = readBaseUrl(process.env);
   } catch (error) {
     console.error(`Error: ${errorMessage(error)}`);
     process.exitCode = 1;
     return;
   }
 
-  const oauth = createOAuthManager();
-  const client = new SharesightClient(oauth);
+  const oauth = createOAuthManager(baseUrl);
+  const client = new SharesightClient(oauth, baseUrl);
+
+  // Built once and shared, because in HTTP mode a new server is built for every request
+  const holdings = new HoldingsLister({
+    cache: new MemoryCache(listing.cacheTtlSeconds * 1000, MAX_CACHED_LISTS),
+    cursors: new CursorCodec(listing.cursorSecret),
+    maxResponseChars: listing.maxResponseChars,
+  });
 
   const createServer = (): McpServer => {
     const server = new McpServer({
@@ -778,7 +864,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client);
+    registerTools(server, client, holdings);
 
     return server;
   };

@@ -20,20 +20,28 @@ sharesight-mcp/
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime
+│   ├── holdings-page.ts      # pageHoldings(): client-side filter and size-budgeted paging for the holdings list tools
+│   ├── holdings-list.ts      # HoldingsLister: snapshot ids, cursors, cache and paging for list_holdings / list_portfolio_holdings
+│   ├── cursor.ts             # CursorCodec: signed, stateless paging cursors
+│   ├── cache.ts              # Cache interface and MemoryCache (TTL, entry cap)
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
 │   ├── sharesight-client.ts  # HTTP client for Sharesight API
-│   ├── types.ts              # TypeScript interfaces for API types
-│   ├── *.test.ts             # node:test suites (oauth, client, startup, http)
-│   └── test-helpers.ts       # stubFetch and response builders shared by the tests
+│   └── types.ts              # TypeScript interfaces for API types
+├── tests/                    # Mirrors src/. Compiled with src/ into .test-build/ by npm test
+│   ├── *.test.ts             # node:test suites (oauth, client, startup, http, holdings-page, cursor, cache, tools, version)
+│   ├── test-helpers.ts       # stubFetch and response builders shared by the tests
+│   ├── server-env.ts         # inheritedEnv(): the parent environment minus the server's own settings, for tests that spawn it
+│   ├── mock-sharesight.ts    # Mock Sharesight API server for the tool tests
+│   └── scripts/              # Tests for scripts/ (resolve-version.test.mjs), run as plain JavaScript
 ├── .github/workflows/ci.yml  # Build and test on PRs; reusable via workflow_call
 ├── .github/workflows/docker.yml  # Tests, then builds and publishes the image on main and v* tags
 ├── Dockerfile                # Multi-stage image, runs HTTP mode as a non-root user
-├── scripts/                  # Build helpers (clean-test-build.mjs, resolve-version.mjs and its test)
-├── tsconfig.build.json       # Used by npm run build; leaves the tests out of dist/
-├── tsconfig.test.json        # Builds everything, tests included, into .test-build/ (gitignored)
+├── scripts/                  # Build helpers (prepare-test-build.mjs, resolve-version.mjs)
+├── tsconfig.json             # Shared options; includes src/ and tests/ for editors
+├── tsconfig.build.json       # Used by npm run build; src/ only, into dist/
+├── tsconfig.test.json        # Builds src/ and tests/ into .test-build/ (gitignored)
 ├── dist/                     # Compiled output (gitignored)
 ├── package.json
-├── tsconfig.json
 └── README.md
 ```
 
@@ -43,7 +51,7 @@ sharesight-mcp/
 The main CLI entry point with one command:
 - `sharesight-mcp serve` - Run the MCP server over stdio (default)
 - `sharesight-mcp serve --http` - Run it over Streamable HTTP (also `MCP_TRANSPORT=http`)
-Contains tool definitions using Zod schemas for validation. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside the shared `SharesightClient`.
+Contains tool definitions using Zod schemas for validation. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside the shared `SharesightClient` and `HoldingsLister`, which `runServe` builds once.
 
 ### `src/http.ts`
 Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `MCP_PORT`, `MCP_HOST` and `MCP_AUTH_TOKEN`; the generic `PORT` and `HOST` are deliberately not read. Stdio uses `serveStdio` so it also serves both protocol eras, and `serve` rejects unknown options before it contacts the token endpoint.
@@ -71,7 +79,7 @@ npm install     # Install dependencies
 npm run build   # Compile TypeScript to dist/
 npm run dev     # Watch mode for development
 npm start       # Run the compiled server
-npm test        # Build the tests into .test-build/ and run the node:test suites
+npm test        # Build src/ and tests/ into .test-build/ and run the node:test suites
 ```
 
 ## Adding a New Tool
@@ -134,7 +142,7 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 
 ## Testing
 
-`npm test` builds `src/*.test.ts` into `.test-build/` and runs them with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). The tool handlers in `src/index.ts` are not covered. Test those manually:
+`npm test` compiles `src/` and `tests/` together into `.test-build/` (`scripts/prepare-test-build.mjs` clears it first and copies `package.json` in, because `src/version.ts` reads it) and runs the suites with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). `tests/tools.test.ts` runs the server over stdio against `tests/mock-sharesight.ts`, a local HTTP stand-in for Sharesight reached through `SHARESIGHT_BASE_URL`, and covers the holdings list tools. Extend the mock when a test needs another endpoint. New tests go in `tests/`, named after the `src/` file they cover, and import from `../src/`. A test that spawns the server must build its environment from `inheritedEnv()`, so settings exported in a developer's shell cannot change the result. The other tool handlers in `src/index.ts` are not covered. Test those manually:
 
 1. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
 2. Run `node dist/index.js serve`
