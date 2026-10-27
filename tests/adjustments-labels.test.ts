@@ -1,9 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { lastBody, lastCall, lastRequest } from "./mock-sharesight.js";
 import { withServer } from "./stdio-session.js";
-
-const lastBody = (mock: { requests: Array<{ method: string; path: string; body?: any }> }) => mock.requests.filter((r) => r.body !== undefined).at(-1)!;
-const lastRequest = (mock: { requests: Array<{ method: string; path: string; body?: any }> }) => mock.requests.at(-1)!;
 
 const ADJUSTMENT = { announced_on: "2026-09-01", goes_ex_on: "2026-09-10", paid_on: "2026-09-20", amount_per_share: 0.5, tax_credit: 0, currency_code: "AUD" };
 
@@ -31,7 +29,7 @@ describe("adjustment tools", () => {
       const result = await call("delete_adjustment", { adjustment_id: 4 });
 
       assert.equal(result.isError, false, result.text);
-      assert.deepEqual({ method: lastRequest(mock).method, path: lastRequest(mock).path }, { method: "DELETE", path: "/api/v3/adjustments/4" });
+      assert.deepEqual(lastCall(mock), { method: "DELETE", path: "/api/v3/adjustments/4" });
     });
   });
 
@@ -80,7 +78,7 @@ describe("label tools", () => {
 
       assert.equal(result.isError, false, result.text);
       assert.deepEqual(result.payload, { status: 204 });
-      assert.deepEqual({ method: lastRequest(mock).method, path: lastRequest(mock).path }, { method: "DELETE", path: "/api/v3/holdings/5/labels/growth%20stocks" });
+      assert.deepEqual(lastCall(mock), { method: "DELETE", path: "/api/v3/holdings/5/labels/growth%20stocks" });
     });
   });
 
@@ -98,7 +96,7 @@ describe("label tools", () => {
       const result = await call("delete_label", { portfolio_id: 7, label: "growth stocks" });
 
       assert.equal(result.isError, false, result.text);
-      assert.deepEqual({ method: lastRequest(mock).method, path: lastRequest(mock).path }, { method: "DELETE", path: "/api/v3/portfolios/7/labels/growth%20stocks" });
+      assert.deepEqual(lastCall(mock), { method: "DELETE", path: "/api/v3/portfolios/7/labels/growth%20stocks" });
     });
   });
 });

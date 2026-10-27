@@ -17,6 +17,15 @@ export interface MockSharesight {
   close(): Promise<void>;
 }
 
+/** The last request that carried a body, which is the last write */
+export const lastBody = (mock: MockSharesight) => mock.requests.filter((r) => r.body !== undefined).at(-1)!;
+
+/** The last request of any kind */
+export const lastRequest = (mock: MockSharesight) => mock.requests.at(-1)!;
+
+/** The method and path of the last request, for comparing without the body */
+export const lastCall = (mock: MockSharesight) => ({ method: lastRequest(mock).method, path: lastRequest(mock).path });
+
 async function readBody(req: IncomingMessage): Promise<string> {
   let body = "";
 
@@ -49,7 +58,7 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
   };
 
   const server: Server = createServer(async (req, res) => {
-    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    const { pathname: path, search } = new URL(req.url ?? "/", "http://localhost");
     const text = await readBody(req);
     const entry: MockSharesight["requests"][number] = { method: req.method ?? "", path };
     mock.requests.push(entry);
@@ -93,7 +102,7 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
     }
 
     if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+|custom_investments\/\d+\/adjustments|adjustments\/\d+|portfolios\/\d+\/labels(\/[^/]+)?)$/.test(path)) {
-      send(res, 200, { api_transaction: { id: 1 }, query: new URL(req.url ?? "/", "http://localhost").search });
+      send(res, 200, { api_transaction: { id: 1 }, query: search });
       return;
     }
 
@@ -146,7 +155,7 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
     }
 
     if (req.method === "GET" && /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|user_instruments\.json|holdings\/\d+\/rejected_trades\.json)$/.test(path)) {
-      send(res, 200, { query: new URL(req.url ?? "/", "http://localhost").search });
+      send(res, 200, { query: search });
       return;
     }
 

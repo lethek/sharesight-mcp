@@ -1,10 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { READ_ONLY, formatError, formatResult } from "./common.js";
+import { READ_ONLY, consolidated, formatError, formatResult, portfolioId } from "./common.js";
 
-const portfolioId = z.number().describe("The portfolio ID");
-const consolidated = z.boolean().optional().describe("True for a consolidated view");
 const grouping = z
   .string()
   .optional()

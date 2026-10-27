@@ -2,7 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MemoryCache, type Cache } from "../src/cache.js";
 import { CursorCodec } from "../src/cursor.js";
-import { HoldingsLister, MAX_SEARCH_LENGTH, PAGINATION_RESERVE_CHARS, isCursorState, type CursorState, type HoldingsSnapshot } from "../src/holdings-list.js";
+import { HoldingsLister, MAX_SEARCH_LENGTH, isCursorState, type CursorState, type HoldingsSnapshot } from "../src/holdings-list.js";
+import { PAGINATION_RESERVE_CHARS } from "../src/paged-list.js";
 import type { Holding, HoldingsResponse } from "../src/types.js";
 
 function holding(id: number): Holding {

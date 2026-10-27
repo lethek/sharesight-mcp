@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withAttachment, type AttachmentSettings } from "../src/tools/attachments.js";
+import { lastBody } from "./mock-sharesight.js";
 import { withServer } from "./stdio-session.js";
 
 const CONTENT = "contract note text";
@@ -161,8 +162,6 @@ describe("a data root", () => {
 });
 
 describe("attachments through the tools", () => {
-  const lastBody = (mock: { requests: Array<{ method: string; path: string; body?: any }> }) => mock.requests.filter((r) => r.body !== undefined).at(-1)!;
-
   test("create_trade nests the fields under trade, with the attachment", async () => {
     await withServer([], {}, async (call, mock) => {
       const result = await call("create_trade", { portfolio_id: 7, instrument_id: 3, description_code: "BUY", quantity: 2, price: 9.5, transaction_date: "2024-01-02", attachment_base64: BASE64, attachment_filename: "cn.txt" });

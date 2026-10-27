@@ -1,10 +1,6 @@
-import type { Cache } from "./cache.js";
-import type { CursorCodec } from "./cursor.js";
 import { compareHoldings, matchesHolding, type HoldingFilters } from "./holdings-page.js";
-import { PAGINATION_RESERVE_CHARS, PagedLister, pagedCursorCheck, type ListSnapshot, type PagedCursorState } from "./paged-list.js";
+import { PagedLister, pagedCursorCheck, type ListSnapshot, type PagedCursorState, type PagedListerOptions } from "./paged-list.js";
 import type { Holding, HoldingsResponse } from "./types.js";
-
-export { PAGINATION_RESERVE_CHARS };
 
 /** Longest search text accepted. It is copied into every cursor, so an unbounded one could push a page over its size limit. */
 export const MAX_SEARCH_LENGTH = 100;
@@ -40,30 +36,14 @@ export interface HoldingsListArgs extends HoldingFilters {
   cursor?: string | null;
 }
 
-export interface HoldingsListerOptions {
-  /** Holds the matching holdings by snapshot id so later pages come from one snapshot. It may forget entries at any time. */
-  cache: Cache<HoldingsSnapshot>;
-  cursors: CursorCodec<CursorState>;
-  /** Most characters one response may take, whatever the client's own limit is */
-  maxResponseChars: number;
-}
-
-/**
- * Drops filters that were not given, so the rest can be compared with the ones in a cursor. A blank string counts as not given,
- * because callers often fill unused text inputs with "" and it filters nothing.
- */
-function givenFilters({ search, market_code, portfolio_id, valid_position }: HoldingFilters): HoldingFilters {
-  const isGiven = (value: unknown) => value !== undefined && !(typeof value === "string" && value.trim() === "");
-
-  return Object.fromEntries(Object.entries({ search, market_code, portfolio_id, valid_position }).filter(([, value]) => isGiven(value)));
-}
+export type HoldingsListerOptions = PagedListerOptions<Holding, HoldingsEnvelope, HoldingFilters>;
 
 /** Lists holdings a page at a time. See PagedLister for how snapshots, cursors and the cache work. */
 export class HoldingsLister {
   private readonly lister: PagedLister<Holding, HoldingsEnvelope, HoldingFilters>;
 
   constructor(options: HoldingsListerOptions) {
-    this.lister = new PagedLister(options, { matches: matchesHolding, compare: compareHoldings, isFilters: isHoldingFilters, given: givenFilters });
+    this.lister = new PagedLister(options, { matches: matchesHolding, compare: compareHoldings, isFilters: isHoldingFilters });
   }
 
   async list(scope: string, fetch: () => Promise<HoldingsResponse>, args: HoldingsListArgs): Promise<object> {

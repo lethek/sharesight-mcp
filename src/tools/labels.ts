@@ -1,10 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
+import { CREATE, DELETE, READ_ONLY, UPDATE, consolidated, formatError, formatResult, holdingId, portfolioId } from "./common.js";
 
-const portfolioId = z.number().describe("The portfolio ID");
-const consolidated = z.boolean().optional().describe("True if portfolio_id is a consolidated portfolio view");
 const labelName = z.string().describe("The label name. Only letters, digits, spaces and underscores are allowed, so no hyphens.");
 const holdingIds = z.array(z.number()).min(1).describe("The holding IDs to attach the label to");
 
@@ -98,7 +96,7 @@ export function registerLabelWriteTools(server: McpServer, client: SharesightCli
       description:
         "Detaches a label from one holding. There is no bulk version. Detaching the last holding removes the label itself.",
       annotations: DELETE,
-      inputSchema: z.object({ holding_id: z.number().describe("The holding ID"), label: labelName }),
+      inputSchema: z.object({ holding_id: holdingId, label: labelName }),
     },
     async ({ holding_id, label }) => {
       try {

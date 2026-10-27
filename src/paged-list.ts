@@ -8,7 +8,11 @@ export const PAGINATION_RESERVE_CHARS = 700;
 /** Characters one item takes inside the response, which is printed with 2-space indentation and the array two levels deep. */
 export function serializedSize(item: unknown): number {
   const text = JSON.stringify(item, null, 2);
-  const lines = text.split("\n").length;
+  let lines = 1;
+
+  for (let at = text.indexOf("\n"); at >= 0; at = text.indexOf("\n", at + 1)) {
+    lines++;
+  }
 
   return text.length + lines * 4 + 2;
 }
@@ -76,14 +80,11 @@ export function pagedCursorCheck<F extends object>(isFilters: (value: unknown) =
   };
 }
 
-/** What the cache holds for a walk: the items that matched, in page order, and the rest of the Sharesight reply. */
+/** What the cache holds for a walk: the items that matched, in page order, and the rest of the Sharesight reply. A fetch returns the same shape, with every item. */
 export interface ListSnapshot<T, E extends object> {
   items: T[];
   envelope: E;
 }
-
-/** What a fetch returns: every item Sharesight has for the query, and the rest of the reply. */
-export type Fetched<T, E extends object> = ListSnapshot<T, E>;
 
 /** What differs between lists: which items match the filters, and how they are ordered. */
 export interface ListDefinition<T, F extends object> {
@@ -92,8 +93,17 @@ export interface ListDefinition<T, F extends object> {
   /** Orders the matching items, so page boundaries stay put. Without it they keep the order Sharesight gave. */
   compare?(a: T, b: T): number;
   isFilters(value: unknown): value is F;
-  /** Drops filters that were not given, so the rest can be compared with the ones in a cursor. Without it every filter counts as given. */
-  given?(filters: F): F;
+}
+
+/**
+ * Drops filters that were not given, so the rest can be compared with the ones in a cursor. A blank string counts as not given,
+ * because callers often fill unused text inputs with "" and it filters nothing. Filters are compared with !==, so they must be
+ * strings, numbers or booleans.
+ */
+function givenFilters<F extends object>(requested: F): F {
+  const isGiven = (value: unknown) => value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "");
+
+  return Object.fromEntries(Object.entries(requested).filter(([, value]) => isGiven(value))) as F;
 }
 
 export interface PagedListerOptions<T, E extends object, F extends object> {
@@ -128,19 +138,23 @@ export interface PageArgs {
  * snapshot and cannot disturb each other. Only matching items are cached, so a list that is mostly filtered out costs little to keep.
  */
 export class PagedLister<T, E extends object, F extends object> {
+  private readonly isCursor: (value: unknown) => value is PagedCursorState<F>;
+
   constructor(
     private readonly options: PagedListerOptions<T, E, F>,
     private readonly definition: ListDefinition<T, F>
-  ) {}
+  ) {
+    this.isCursor = pagedCursorCheck(definition.isFilters);
+  }
 
-  async list(scope: string, fetch: () => Promise<Fetched<T, E>>, requested: F, { cursor, limit }: PageArgs): Promise<PagedResult<T, E>> {
+  async list(scope: string, fetch: () => Promise<ListSnapshot<T, E>>, requested: F, { cursor, limit }: PageArgs): Promise<PagedResult<T, E>> {
     const { cache, cursors, maxResponseChars } = this.options;
-    const { matches, compare, isFilters, given } = this.definition;
-    const filters = given ? given(requested) : requested;
+    const { matches, compare } = this.definition;
+    const filters = givenFilters(requested);
     let state: PagedCursorState<F> = { scope, snapshot: randomBytes(16).toString("base64url"), offset: 0, filters, limit };
 
     if (cursor) {
-      const previous = cursors.decode(cursor, pagedCursorCheck(isFilters));
+      const previous = cursors.decode(cursor, this.isCursor);
 
       if (previous.scope !== scope) {
         throw new CursorError("This cursor belongs to a different query.");

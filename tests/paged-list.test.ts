@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MemoryCache, type Cache } from "../src/cache.js";
 import { CursorCodec } from "../src/cursor.js";
-import { PagedLister, pageItems, serializedSize, type ListSnapshot, type PagedCursorState } from "../src/paged-list.js";
+import { PagedLister, pageItems, serializedSize, type ItemPage, type ListSnapshot, type PagedCursorState } from "../src/paged-list.js";
 
 interface Row {
   id: number;
@@ -51,20 +51,70 @@ class SpyCache implements Cache<Snapshot> {
   }
 }
 
-describe("pageItems", () => {
-  test("fills the budget and says where the next page starts", () => {
-    const items = rows(10);
-    const two = serializedSize(items[0]) + serializedSize(items[1]);
-    const page = pageItems(items, { budgetChars: two });
+const BIG = 1_000_000;
+const ids = (page: { items: Row[] }) => page.items.map((r) => r.id);
 
-    assert.deepEqual(page.items.map((r) => r.id), [1, 2]);
+describe("pageItems", () => {
+  const items = rows(5);
+  const size = serializedSize(items[0]);
+
+  test("a page holds as many items as fit in the budget", () => {
+    const page = pageItems(items, { budgetChars: size * 3 });
+
+    assert.deepEqual(ids(page), [1, 2, 3]);
+    assert.equal(page.nextOffset, 3);
+  });
+
+  test("one character less leaves the last one for the next page", () => {
+    assert.deepEqual(ids(pageItems(items, { budgetChars: size * 3 - 1 })), [1, 2]);
+  });
+
+  test("bigger items mean fewer per page", () => {
+    const wide = items.map((r) => ({ ...r, text: "x".repeat(2000) }));
+
+    assert.ok(pageItems(wide, { budgetChars: 5000 }).items.length < pageItems(items, { budgetChars: 5000 }).items.length);
+  });
+
+  test("a page always holds at least one item, even if it is over budget", () => {
+    const page = pageItems(items, { budgetChars: 1 });
+
+    assert.deepEqual(ids(page), [1]);
+    assert.equal(page.nextOffset, 1);
+  });
+
+  test("limit caps the count even when there is room", () => {
+    const page = pageItems(items, { budgetChars: BIG, limit: 2 });
+
+    assert.deepEqual(ids(page), [1, 2]);
     assert.equal(page.nextOffset, 2);
   });
 
-  test("a page always holds one item, and limit and offset apply", () => {
-    assert.equal(pageItems(rows(3), { budgetChars: 1 }).items.length, 1);
-    assert.deepEqual(pageItems(rows(5), { budgetChars: 1e6, limit: 2, offset: 3 }).items.map((r) => r.id), [4, 5]);
-    assert.equal(pageItems(rows(5), { budgetChars: 1e6, offset: 5 }).nextOffset, null);
+  test("the size is what an item adds to the printed response", () => {
+    const printed = (list: Row[]) => JSON.stringify({ rows: list }, null, 2).length;
+
+    assert.equal(printed([items[0], items[1]]) - printed([items[0]]), serializedSize(items[1]));
+  });
+
+  test("walking nextOffset visits every item once", () => {
+    const seen: number[] = [];
+
+    for (let offset: number | null = 0; offset !== null; ) {
+      const page: ItemPage<Row> = pageItems(items, { budgetChars: size * 2, offset });
+      seen.push(...ids(page));
+      offset = page.nextOffset;
+    }
+
+    assert.deepEqual(seen, [1, 2, 3, 4, 5]);
+  });
+
+  test("a page that ends exactly at the total has no next page", () => {
+    assert.equal(pageItems(items, { budgetChars: BIG, limit: 5 }).nextOffset, null);
+    assert.equal(pageItems(items, { budgetChars: BIG, limit: 4 }).nextOffset, 4);
+  });
+
+  test("the last page and an offset past the end have no next page", () => {
+    assert.deepEqual(ids(pageItems(items, { budgetChars: BIG, offset: 4 })), [5]);
+    assert.deepEqual(pageItems(items, { budgetChars: BIG, offset: 99 }), { items: [], nextOffset: null });
   });
 });
 

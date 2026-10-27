@@ -1,11 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import type { MockSharesight } from "./mock-sharesight.js";
 import { withServer } from "./stdio-session.js";
 
-type Seen = { requests: Array<{ method: string; path: string; body?: any }> };
-
-const posts = (mock: Seen) => mock.requests.filter((r) => r.method === "POST" && r.path.startsWith("/api/v2/"));
-const lastPost = (mock: Seen) => posts(mock).at(-1)!;
+const posts = (mock: MockSharesight) => mock.requests.filter((r) => r.method === "POST" && r.path.startsWith("/api/v2/"));
+const lastPost = (mock: MockSharesight) => posts(mock).at(-1)!;
 
 describe("unconfirmed payouts and trades", () => {
   test("list_unconfirmed_payouts keeps only the unconfirmed ones and says which dates it searched", async () => {

@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import type { UnconfirmedItem, UnconfirmedLister } from "../unconfirmed-list.js";
-import { DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
+import { DELETE, READ_ONLY, UPDATE, formatError, formatFailure, formatResult, holdingId, portfolioId } from "./common.js";
 
 /**
  * Sharesight builds payouts and trades from company events (dividends, splits, mergers) and from maturing interest instruments, and
@@ -13,7 +13,6 @@ import { DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.j
  * reinvestment (DRP) trade follows its payout, so confirming or rejecting the payout settles the trade too.
  */
 
-const holdingId = z.number().describe("The holding ID");
 const companyEventId = z.number().optional().describe("The company_event_id of the unconfirmed payout, as listed by list_unconfirmed_payouts");
 const paidOnInput = z.string().optional().describe("The payment date YYYY-MM-DD, to name an interest payout, which has no company_event_id");
 
@@ -22,12 +21,13 @@ const EARLIEST = "2000-01-01";
 const LATEST = "2100-12-31";
 
 const rangeInput = {
-  portfolio_id: z.number().describe("The portfolio ID"),
+  portfolio_id: portfolioId,
   start_date: z.string().optional().describe(`Start date YYYY-MM-DD (default ${EARLIEST}). A later date makes the call faster.`),
   end_date: z.string().optional().describe(`End date YYYY-MM-DD (default ${LATEST})`),
 };
 
-type Item = UnconfirmedItem;
+/** The payouts or trades in a v2 list reply */
+const itemsOf = (reply: Record<string, unknown>, field: "payouts" | "trades"): UnconfirmedItem[] => (reply[field] as UnconfirmedItem[] | undefined) ?? [];
 
 /** Exactly one of company_event_id and paid_on must name the payout. */
 function identify(companyEventId: number | undefined, paidOn: string | undefined): string | undefined {
@@ -42,8 +42,6 @@ function identify(companyEventId: number | undefined, paidOn: string | undefined
   return undefined;
 }
 
-const fail = (message: string) => formatError(new Error(message));
-
 const PAGING_HELP =
   "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself. Later pages come from the list the first page found, so confirming or rejecting items between pages does not move the pages.";
 
@@ -54,7 +52,9 @@ const pagingInput = {
 
 export function registerConfirmationReadTools(server: McpServer, client: SharesightClient, unconfirmed: UnconfirmedLister) {
   /** Both lists work the same way: fetch the portfolio's whole v2 list, keep the unconfirmed items, and page them. */
-  function registerUnconfirmedList(name: string, key: string, description: string, fetch: (portfolioId: number, range: { start_date: string; end_date: string }) => Promise<Record<string, unknown>>, field: string) {
+  function registerUnconfirmedList(kind: "payouts" | "trades", description: string) {
+    const name = `list_unconfirmed_${kind}`;
+
     server.registerTool(
       name,
       {
@@ -67,14 +67,14 @@ export function registerConfirmationReadTools(server: McpServer, client: Sharesi
           const searched = { start_date: start_date ?? EARLIEST, end_date: end_date ?? LATEST };
           // The portfolio and dates are part of the scope, so a cursor only continues the query it came from
           const scope = `${name}:${portfolio_id}:${searched.start_date}:${searched.end_date}`;
-          const { items, pagination } = await unconfirmed.list(
-            scope,
-            async () => ({ items: ((await fetch(portfolio_id, searched))[field] as UnconfirmedItem[] | undefined) ?? [], envelope: {} }),
-            {},
-            { cursor, limit }
-          );
+          const fetch = async () => {
+            const reply = kind === "payouts" ? await client.listPortfolioPayoutsV2(portfolio_id, searched) : await client.listPortfolioTradesV2(portfolio_id, searched);
 
-          return formatResult({ [key]: items, searched, pagination });
+            return { items: itemsOf(reply, kind), envelope: {} };
+          };
+          const { items, pagination } = await unconfirmed.list(scope, fetch, {}, { cursor, limit });
+
+          return formatResult({ [`unconfirmed_${kind}`]: items, searched, pagination });
         } catch (error) {
           return formatError(error);
         }
@@ -83,19 +83,13 @@ export function registerConfirmationReadTools(server: McpServer, client: Sharesi
   }
 
   registerUnconfirmedList(
-    "list_unconfirmed_payouts",
-    "unconfirmed_payouts",
-    "Lists the payouts in a portfolio that are waiting to be confirmed or rejected (v2 API). Dividend payouts have a company_event_id. Interest payouts have none and are named by paid_on.",
-    (portfolioId, range) => client.listPortfolioPayoutsV2(portfolioId, range),
-    "payouts"
+    "payouts",
+    "Lists the payouts in a portfolio that are waiting to be confirmed or rejected (v2 API). Dividend payouts have a company_event_id. Interest payouts have none and are named by paid_on."
   );
 
   registerUnconfirmedList(
-    "list_unconfirmed_trades",
-    "unconfirmed_trades",
-    "Lists the trades in a portfolio that are waiting to be confirmed (v2 API). A dividend reinvestment trade is settled by confirming or rejecting its payout with confirm_payout or reject_payout, matched by company_event_id. This server cannot confirm or reject other trades.",
-    (portfolioId, range) => client.listPortfolioTradesV2(portfolioId, range),
-    "trades"
+    "trades",
+    "Lists the trades in a portfolio that are waiting to be confirmed (v2 API). A dividend reinvestment trade is settled by confirming or rejecting its payout with confirm_payout or reject_payout, matched by company_event_id. This server cannot confirm or reject other trades."
   );
 
   server.registerTool(
@@ -144,21 +138,21 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
       const problem = identify(company_event_id, paid_on);
 
       if (problem) {
-        return fail(problem);
+        return formatFailure(problem);
       }
 
       if (reinvestment && skip_reinvestment) {
-        return fail("Give reinvestment or skip_reinvestment, not both.");
+        return formatFailure("Give reinvestment or skip_reinvestment, not both.");
       }
 
       try {
         if (company_event_id !== undefined && !reinvestment && !skip_reinvestment) {
           // Confirming a payout without a reinvestment removes the holding's pending reinvestment trade for it, so make the caller choose
           const trades = await client.listHoldingTradesV2(holding_id, { start_date: EARLIEST, end_date: LATEST });
-          const pending = ((trades.trades as Item[] | undefined) ?? []).find((trade) => trade.state === "unconfirmed" && trade.company_event_id === company_event_id);
+          const pending = itemsOf(trades, "trades").find((trade) => trade.state === "unconfirmed" && trade.company_event_id === company_event_id);
 
           if (pending) {
-            return fail(
+            return formatFailure(
               `Holding ${holding_id} has a pending reinvestment trade for this payout (quantity ${pending.quantity} at price ${pending.price}). ` +
                 "Confirming without a reinvestment would remove it. Pass reinvestment with its quantity and price to keep it, or skip_reinvestment: true to drop it."
             );
@@ -203,33 +197,33 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
       const problem = identify(company_event_id, paid_on);
 
       if (problem) {
-        return fail(problem);
+        return formatFailure(problem);
       }
 
       try {
         return formatResult(await client.setPayoutStateV2({ holding_id, company_event_id, paid_on, state: "rejected" }));
       } catch (error) {
         // Sharesight answers a rejection by paid_on with a 500 even though it rejects the payout, so look before reporting a failure
-        if (paid_on === undefined) {
-          return formatError(error);
-        }
-
-        try {
-          const payouts = await client.listHoldingPayoutsV2(holding_id, { start_date: paid_on, end_date: paid_on });
-          const stillPending = ((payouts.payouts as Item[] | undefined) ?? []).some((payout) => payout.state === "unconfirmed" && payout.paid_on === paid_on);
-
-          if (!stillPending) {
-            return formatResult({
-              rejected: true,
-              note: "Sharesight reported an error, but no unconfirmed payout remains on that date, so it is rejected.",
-            });
-          }
-        } catch {
-          // The check failed too, so report the original error
+        if (paid_on !== undefined && (await noPendingPayout(client, holding_id, paid_on))) {
+          return formatResult({
+            rejected: true,
+            note: "Sharesight reported an error, but no unconfirmed payout remains on that date, so it is rejected.",
+          });
         }
 
         return formatError(error);
       }
     }
   );
+}
+
+/** True when the holding has no unconfirmed payout on that date. False when there is one, or when the check itself fails. */
+async function noPendingPayout(client: SharesightClient, holdingId: number, paidOn: string): Promise<boolean> {
+  try {
+    const payouts = await client.listHoldingPayoutsV2(holdingId, { start_date: paidOn, end_date: paidOn });
+
+    return !itemsOf(payouts, "payouts").some((payout) => payout.state === "unconfirmed" && payout.paid_on === paidOn);
+  } catch {
+    return false;
+  }
 }
