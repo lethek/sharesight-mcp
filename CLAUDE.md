@@ -8,7 +8,7 @@ This is an MCP (Model Context Protocol) server that wraps the Sharesight v3 API,
 
 **Tech Stack:**
 - TypeScript
-- Node.js 18+
+- Node.js 24+
 - MCP SDK (`@modelcontextprotocol/sdk`)
 
 ## Project Structure
@@ -69,26 +69,26 @@ npm start       # Run the compiled server
 
 2. **Add types** to `src/types.ts` if needed
 
-3. **Add tool definition** to `tools` array in `src/index.ts`:
+3. **Add tool** to `registerTools()` in `src/index.ts`:
    ```typescript
-   {
-     name: "new_tool",
-     description: "Description of what it does",
-     inputSchema: {
-       type: "object",
-       properties: {
-         param: { type: "string", description: "..." }
-       },
-       required: ["param"]
-     }
-   }
-   ```
+   server.registerTool(
+     "new_tool",
+     {
+       description: "Description of what it does",
+       inputSchema: z.object({
+         param: z.string().describe("..."),
+       }),
+     },
+     async (args) => {
+       try {
+         const result = await client.newMethod(args.param);
 
-4. **Add case handler** in the switch statement:
-   ```typescript
-   case "new_tool":
-     result = await client.newMethod((args as { param: string }).param);
-     break;
+         return formatResult(result);
+       } catch (error) {
+         return formatError(error);
+       }
+     }
+   );
    ```
 
 ## API Conventions
@@ -101,6 +101,8 @@ npm start       # Run the compiled server
 
 ### Error Handling
 The client throws errors for non-2xx responses. The MCP handler catches these and returns `isError: true` responses.
+
+`request()` retries once with a new token on a 401 from a cached token, and aborts after 30 seconds (180 for the performance report endpoints). A timeout on a write says the change may still have been applied.
 
 ## Authentication
 
@@ -117,9 +119,9 @@ Currently no automated tests. Test manually:
 ## Common Tasks
 
 ### Update an existing tool
-1. Find the tool in `src/index.ts` tools array
+1. Find the tool in `registerTools()` in `src/index.ts`
 2. Modify the `inputSchema` as needed
-3. Update the case handler if parameters changed
+3. Update the handler if parameters changed
 4. Update client method in `src/sharesight-client.ts` if needed
 
 ### Fix type errors
