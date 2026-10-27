@@ -1,13 +1,16 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withAttachment } from "../src/tools/attachments.js";
+import { withAttachment, type PathPolicy } from "../src/tools/attachments.js";
 import { withServer } from "./stdio-session.js";
 
 const CONTENT = "contract note text";
 const BASE64 = Buffer.from(CONTENT).toString("base64");
+
+const ANYWHERE: PathPolicy = { unrestricted: true };
+const NOWHERE: PathPolicy = { unrestricted: false };
 
 describe("withAttachment", () => {
   let dir: string;
@@ -22,42 +25,104 @@ describe("withAttachment", () => {
   after(() => rmSync(dir, { recursive: true, force: true }));
 
   test("leaves the other arguments alone when there is no attachment", async () => {
-    assert.deepEqual(await withAttachment({ price: 5 } as any, true), { price: 5 });
+    assert.deepEqual(await withAttachment({ price: 5 } as any, ANYWHERE), { price: 5 });
   });
 
   test("base64 passes through with its file name", async () => {
-    const result = await withAttachment({ price: 5, attachment_base64: BASE64, attachment_filename: "a.txt" }, false);
+    const result = await withAttachment({ price: 5, attachment_base64: BASE64, attachment_filename: "a.txt" }, NOWHERE);
 
     assert.deepEqual(result, { price: 5, attachment: BASE64, attachment_filename: "a.txt" });
   });
 
   test("a path is read and encoded, named after the file by default", async () => {
-    assert.deepEqual(await withAttachment({ attachment_path: file }, true), { attachment: BASE64, attachment_filename: "note.txt" });
-    assert.deepEqual(await withAttachment({ attachment_path: file, attachment_filename: "other.txt" }, true), { attachment: BASE64, attachment_filename: "other.txt" });
+    assert.deepEqual(await withAttachment({ attachment_path: file }, ANYWHERE), { attachment: BASE64, attachment_filename: "note.txt" });
+    assert.deepEqual(await withAttachment({ attachment_path: file, attachment_filename: "other.txt" }, ANYWHERE), { attachment: BASE64, attachment_filename: "other.txt" });
   });
 
-  test("a path is refused when paths are not allowed", async () => {
-    await assert.rejects(withAttachment({ attachment_path: file }, false), /only available when the server runs over stdio/);
+  test("a path is refused when there is no data root and paths are not unrestricted", async () => {
+    await assert.rejects(withAttachment({ attachment_path: file }, NOWHERE), /no MCP_DATA_ROOT/);
   });
 
   test("a missing file is an error", async () => {
-    await assert.rejects(withAttachment({ attachment_path: join(dir, "missing.txt") }, true), /ENOENT/);
+    await assert.rejects(withAttachment({ attachment_path: join(dir, "missing.txt") }, ANYWHERE), /ENOENT/);
   });
 
   test("remove sends nulls", async () => {
-    assert.deepEqual(await withAttachment({ remove_attachment: true }, true), { attachment: null, attachment_filename: null });
+    assert.deepEqual(await withAttachment({ remove_attachment: true }, ANYWHERE), { attachment: null, attachment_filename: null });
   });
 
   test("bad combinations are refused", async () => {
-    await assert.rejects(withAttachment({ attachment_base64: BASE64 }, true), /attachment_filename is required/);
-    await assert.rejects(withAttachment({ attachment_base64: BASE64, attachment_path: file, attachment_filename: "a" }, true), /not both/);
-    await assert.rejects(withAttachment({ attachment_filename: "a" }, true), /needs attachment_base64 or attachment_path/);
-    await assert.rejects(withAttachment({ remove_attachment: true, attachment_base64: BASE64 }, true), /cannot be combined/);
-    await assert.rejects(withAttachment({ attachment_base64: "not base64!", attachment_filename: "a" }, true), /not valid base64/);
+    await assert.rejects(withAttachment({ attachment_base64: BASE64 }, ANYWHERE), /attachment_filename is required/);
+    await assert.rejects(withAttachment({ attachment_base64: BASE64, attachment_path: file, attachment_filename: "a" }, ANYWHERE), /not both/);
+    await assert.rejects(withAttachment({ attachment_filename: "a" }, ANYWHERE), /needs attachment_base64 or attachment_path/);
+    await assert.rejects(withAttachment({ remove_attachment: true, attachment_base64: BASE64 }, ANYWHERE), /cannot be combined/);
+    await assert.rejects(withAttachment({ attachment_base64: "not base64!", attachment_filename: "a" }, ANYWHERE), /not valid base64/);
   });
 
   test("remove_attachment: false does nothing", async () => {
-    assert.deepEqual(await withAttachment({ remove_attachment: false } as any, true), {});
+    assert.deepEqual(await withAttachment({ remove_attachment: false } as any, ANYWHERE), {});
+  });
+});
+
+describe("a data root", () => {
+  let base: string;
+  let root: string;
+  let linkMade = false;
+
+  before(() => {
+    base = mkdtempSync(join(tmpdir(), "sharesight-mcp-root-"));
+    root = join(base, "data");
+    mkdirSync(join(root, "sub"), { recursive: true });
+    mkdirSync(join(base, "data-evil"));
+    writeFileSync(join(root, "sub", "inside.txt"), CONTENT);
+    writeFileSync(join(base, "outside.txt"), "secret");
+    writeFileSync(join(base, "data-evil", "x.txt"), "secret");
+
+    try {
+      symlinkSync(join(base, "outside.txt"), join(root, "link.txt"));
+      linkMade = true;
+    } catch {
+      // Creating a symbolic link can need a privilege the test user lacks (Windows)
+    }
+  });
+
+  after(() => rmSync(base, { recursive: true, force: true }));
+
+  // The policy an HTTP server gets: nothing is allowed without a root
+  const policy = (): PathPolicy => ({ root, unrestricted: false });
+  const read = (path: string) => withAttachment({ attachment_path: path }, policy());
+
+  test("reads a file by path relative to the root, over HTTP too", async () => {
+    assert.deepEqual(await read("sub/inside.txt"), { attachment: BASE64, attachment_filename: "inside.txt" });
+  });
+
+  test("reads an absolute path that is inside the root", async () => {
+    assert.deepEqual(await read(join(root, "sub", "inside.txt")), { attachment: BASE64, attachment_filename: "inside.txt" });
+  });
+
+  test("refuses a path that climbs out of the root", async () => {
+    await assert.rejects(read("../outside.txt"), /inside the server's data root/);
+    await assert.rejects(read("sub/../../outside.txt"), /inside the server's data root/);
+  });
+
+  test("refuses an absolute path outside the root", async () => {
+    await assert.rejects(read(join(base, "outside.txt")), /inside the server's data root/);
+  });
+
+  test("refuses a sibling directory that only shares the root's name as a prefix", async () => {
+    await assert.rejects(read("../data-evil/x.txt"), /inside the server's data root/);
+  });
+
+  test("refuses the root itself", async () => {
+    await assert.rejects(read("."), /inside the server's data root/);
+  });
+
+  test("refuses a symbolic link that leads out of the root", { skip: !linkMade && "cannot create symbolic links here" }, async () => {
+    await assert.rejects(read("link.txt"), /inside the server's data root/);
+  });
+
+  test("the root also confines a stdio server", async () => {
+    await assert.rejects(withAttachment({ attachment_path: join(base, "outside.txt") }, { root, unrestricted: true }), /inside the server's data root/);
   });
 });
 
@@ -100,6 +165,31 @@ describe("attachments through the tools", () => {
           path: "/api/v3/holdings/4/payouts",
           body: { type: "au_local_dividend", paid_on: "2024-03-01", au_local_dividend: { trust: false, franked_amount: 10 }, attachment: BASE64, attachment_filename: "statement.pdf" },
         });
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("with MCP_DATA_ROOT, attachment_path is relative to it and cannot leave it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sharesight-mcp-attach-"));
+    mkdirSync(join(dir, "root"));
+    writeFileSync(join(dir, "root", "cn.txt"), CONTENT);
+    writeFileSync(join(dir, "outside.txt"), "secret");
+
+    try {
+      await withServer([], { MCP_DATA_ROOT: join(dir, "root") }, async (call, mock) => {
+        const ok = await call("create_trade", { holding_id: 1, attachment_path: "cn.txt" });
+
+        assert.equal(ok.isError, false, ok.text);
+        assert.equal(lastBody(mock).body.attachment, BASE64);
+
+        const sent = mock.requests.length;
+        const refused = await call("create_trade", { holding_id: 1, attachment_path: "../outside.txt" });
+
+        assert.equal(refused.isError, true);
+        assert.match(refused.text, /inside the server's data root/);
+        assert.equal(mock.requests.length, sent);
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });

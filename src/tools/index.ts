@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { HoldingsLister } from "../holdings-list.js";
 import type { SharesightClient } from "../sharesight-client.js";
+import type { PathPolicy } from "./attachments.js";
 import { registerAccountReadTools, registerAccountWriteTools } from "./account.js";
 import { registerCouponRateReadTools, registerCouponRateWriteTools } from "./coupon-rates.js";
 import { registerCustomInvestmentPriceReadTools, registerCustomInvestmentPriceWriteTools } from "./custom-investment-prices.js";
@@ -15,15 +16,15 @@ export interface ToolOptions {
   holdings: HoldingsLister;
   /** Leaves out every tool that creates, changes or deletes data */
   readOnly: boolean;
-  /** Lets the attachment tools read a file by path. Only safe when the caller is the local user, so not over HTTP. */
-  allowFilePaths: boolean;
+  /** Where the attachment tools may read files from */
+  paths: PathPolicy;
 }
 
 /**
  * Registers the tools, grouped by feature area. Each area has its read tools and its write tools in separate functions, so read-only
  * mode is a matter of not calling the write ones. Add a new area here, read tools first.
  */
-export function registerTools(server: McpServer, client: SharesightClient, { holdings, readOnly, allowFilePaths }: ToolOptions) {
+export function registerTools(server: McpServer, client: SharesightClient, { holdings, readOnly, paths }: ToolOptions) {
   registerPortfolioReadTools(server, client);
   registerHoldingReadTools(server, client, holdings);
   registerTradeReadTools(server, client);
@@ -40,8 +41,8 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
 
   registerPortfolioWriteTools(server, client);
   registerHoldingWriteTools(server, client);
-  registerTradeWriteTools(server, client, allowFilePaths);
-  registerPayoutWriteTools(server, client, allowFilePaths);
+  registerTradeWriteTools(server, client, paths);
+  registerPayoutWriteTools(server, client, paths);
   registerCustomInvestmentWriteTools(server, client);
   registerCustomInvestmentPriceWriteTools(server, client);
   registerCouponRateWriteTools(server, client);

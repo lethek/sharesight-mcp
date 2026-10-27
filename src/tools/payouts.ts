@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { attachmentInput, attachmentRemoval, withAttachment } from "./attachments.js";
+import { attachmentInput, attachmentRemoval, withAttachment, type PathPolicy } from "./attachments.js";
 import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
 
 const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but Sharesight offers no way to download one.";
@@ -90,8 +90,8 @@ export function registerPayoutReadTools(server: McpServer, client: SharesightCli
   );
 }
 
-/** @param allowFilePaths - whether attachment_path may be used, which is only safe over stdio */
-export function registerPayoutWriteTools(server: McpServer, client: SharesightClient, allowFilePaths: boolean) {
+/** @param paths - where attachment_path may read from */
+export function registerPayoutWriteTools(server: McpServer, client: SharesightClient, paths: PathPolicy) {
   server.registerTool(
     "create_payout",
     {
@@ -106,7 +106,7 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
     },
     async ({ holding_id, ...fields }) => {
       try {
-        return formatResult(await client.createPayout(holding_id, await withAttachment(fields, allowFilePaths)));
+        return formatResult(await client.createPayout(holding_id, await withAttachment(fields, paths)));
       } catch (error) {
         return formatError(error);
       }
@@ -128,7 +128,7 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
     },
     async ({ payout_id, ...fields }) => {
       try {
-        return formatResult(await client.updatePayout(payout_id, await withAttachment(fields, allowFilePaths)));
+        return formatResult(await client.updatePayout(payout_id, await withAttachment(fields, paths)));
       } catch (error) {
         return formatError(error);
       }

@@ -155,9 +155,17 @@ Sharesight lets a trade or payout carry one attached file, such as a contract no
 | Input | Effect |
 |-------|--------|
 | `attachment_base64` | The file, base64 encoded. Needs `attachment_filename`. |
-| `attachment_path` | A path on the machine running the server. The server reads and encodes the file, and the name defaults to the file's own. Only works over stdio, and is refused in [HTTP mode](#http-mode). |
+| `attachment_path` | A path on the machine running the server. The server reads and encodes the file, and the name defaults to the file's own. See below for where it may read. |
 | `attachment_filename` | The file name with its extension |
 | `remove_attachment` | Update tools only: `true` removes the existing attachment |
+
+`attachment_path` reads files according to `MCP_DATA_ROOT`:
+
+- **Set:** paths are relative to that directory, and a file must be inside it. Symbolic links are followed before the check, so a link cannot lead out. This applies over stdio and HTTP. Use it with HTTP when the server can see a shared or mounted directory.
+- **Not set, stdio:** any file the server process can read.
+- **Not set, HTTP:** `attachment_path` is refused. Send `attachment_base64`.
+
+The directory must exist when the server starts. Anyone who can call the server can attach any file inside the root to a trade or payout, so keep the root to files you are happy to upload.
 
 A new attachment replaces the existing one. Downloading is not possible, because the Sharesight API does not offer it. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
 
@@ -189,6 +197,7 @@ Sharesight offers no filter or paging options for holdings, so the server fetche
 | `MCP_MAX_RESPONSE_CHARS` | `30000` | Size limit for one page of a paged list, in characters (at least 5000). Keep it well under your client's tool output limit, which in Claude Code defaults to 25,000 tokens. The default is about a third of the size that exceeded that limit in testing. |
 | `MCP_CACHE_TTL_SECONDS` | `60` | How long the holdings list is cached for later pages. `0` turns the cache off. |
 | `MCP_READ_ONLY` | `false` | `true` leaves out the tools that create, change or delete data. See [Read-only mode](#read-only-mode). |
+| `MCP_DATA_ROOT` | none | Directory that `attachment_path` reads from. See [Attachments](#attachments). |
 | `MCP_CURSOR_SECRET` | random | Signs cursors. By default each process picks its own, so a cursor stops working after a restart and does not work on another instance. Set the same value on every instance to avoid that. |
 | `SHARESIGHT_BASE_URL` | `https://api.sharesight.com` | Replaces the Sharesight address, for tests or a proxy. It must be `https`, except that `http` is accepted for localhost, because your client secret is sent to this address. It cannot have a query or fragment. |
 

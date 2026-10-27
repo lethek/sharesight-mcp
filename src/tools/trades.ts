@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { attachmentInput, attachmentRemoval, withAttachment } from "./attachments.js";
+import { attachmentInput, attachmentRemoval, withAttachment, type PathPolicy } from "./attachments.js";
 import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
 
 const ATTACHMENT_HELP = "Trades list their attachments (id, file name, size, type) but Sharesight offers no way to download one.";
@@ -95,8 +95,8 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
   );
 }
 
-/** @param allowFilePaths - whether attachment_path may be used, which is only safe over stdio */
-export function registerTradeWriteTools(server: McpServer, client: SharesightClient, allowFilePaths: boolean) {
+/** @param paths - where attachment_path may read from */
+export function registerTradeWriteTools(server: McpServer, client: SharesightClient, paths: PathPolicy) {
   server.registerTool(
     "create_trade",
     {
@@ -106,7 +106,7 @@ export function registerTradeWriteTools(server: McpServer, client: SharesightCli
     },
     async (args) => {
       try {
-        return formatResult(await client.createTrade(await withAttachment(args, allowFilePaths)));
+        return formatResult(await client.createTrade(await withAttachment(args, paths)));
       } catch (error) {
         return formatError(error);
       }
@@ -127,7 +127,7 @@ export function registerTradeWriteTools(server: McpServer, client: SharesightCli
     },
     async ({ trade_id, ...fields }) => {
       try {
-        return formatResult(await client.updateTrade(trade_id, await withAttachment(fields, allowFilePaths)));
+        return formatResult(await client.updateTrade(trade_id, await withAttachment(fields, paths)));
       } catch (error) {
         return formatError(error);
       }

@@ -14,7 +14,9 @@
 
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { McpServer } from "@modelcontextprotocol/server";
+import { statSync } from "node:fs";
 import type { Server } from "node:http";
+import { resolve } from "node:path";
 import { SharesightClient } from "./sharesight-client.js";
 import { DEFAULT_BASE_URL, OAuthManager, TokenRequestError } from "./oauth.js";
 import { MCP_PATH, assertAuthConfigured, endpointUrl, isLoopbackHost, shutdownHttpServer, startHttpServer, type HttpServerOptions } from "./http.js";
@@ -70,6 +72,23 @@ function readReadOnly(env: NodeJS.ProcessEnv): boolean {
   }
 
   return text === "true";
+}
+
+/** Reads MCP_DATA_ROOT: the directory attachment_path reads from. It must exist, so a typo is caught at startup. */
+function readDataRoot(env: NodeJS.ProcessEnv): string | undefined {
+  const text = env.MCP_DATA_ROOT?.trim();
+
+  if (!text) {
+    return undefined;
+  }
+
+  const root = resolve(text);
+
+  if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`MCP_DATA_ROOT must be an existing directory, got "${text}".`);
+  }
+
+  return root;
 }
 
 function createOAuthManager(baseUrl: string): OAuthManager {
@@ -157,12 +176,14 @@ async function runServe(): Promise<void> {
   let listing: ListingSettings;
   let baseUrl: string;
   let readOnly: boolean;
+  let dataRoot: string | undefined;
 
   try {
     httpConfig = readServeConfig(process.argv.slice(3), process.env);
     listing = readListingSettings(process.env);
     baseUrl = readBaseUrl(process.env);
     readOnly = readReadOnly(process.env);
+    dataRoot = readDataRoot(process.env);
   } catch (error) {
     console.error(`Error: ${errorMessage(error)}`);
     process.exitCode = 1;
@@ -185,7 +206,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client, { holdings, readOnly, allowFilePaths: !httpConfig });
+    registerTools(server, client, { holdings, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig } });
 
     return server;
   };
@@ -274,6 +295,7 @@ Commands:
 
 Environment variables:
   MCP_READ_ONLY    "true" leaves out every tool that creates, changes or deletes data (default "false")
+  MCP_DATA_ROOT    Directory attachment_path reads from, relative to it and confined to it; required for attachment_path over HTTP
 
 HTTP environment variables:
   MCP_PORT         Port to listen on (default ${DEFAULT_HTTP_PORT})
