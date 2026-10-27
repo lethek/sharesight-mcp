@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 
@@ -27,19 +27,30 @@ export type WithAttachment<T> = Omit<T, AttachmentKeys> & { attachment?: string 
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-/** Where attachment_path may read from. */
-export interface PathPolicy {
+/** Sharesight documents no limit on attachment size, so this is a guard on the server's own memory (base64 and the JSON body add about a third). */
+export const DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/** What the attachment inputs may read, and how much of it. */
+export interface AttachmentSettings {
+  /** Largest attachment, in bytes of the file itself (not its base64 text) */
+  maxBytes: number;
   /** Absolute path of the data root. When set, paths are relative to it and must stay inside it. */
   root?: string;
   /** With no root, whether any path on the machine may be read. True only for a local stdio server. */
   unrestricted: boolean;
 }
 
+function checkSize(bytes: number, maxBytes: number): void {
+  if (bytes > maxBytes) {
+    throw new Error(`The attachment is ${bytes} bytes, over the limit of ${maxBytes} bytes (MCP_MAX_ATTACHMENT_BYTES).`);
+  }
+}
+
 /**
  * Returns the real path of the file to read. With a data root, the path is taken relative to the root (an absolute path must
  * already be inside it) and symbolic links are followed before the check, so a link cannot lead out of the root.
  */
-async function resolveAttachmentPath(path: string, { root, unrestricted }: PathPolicy): Promise<string> {
+async function resolveAttachmentPath(path: string, { root, unrestricted }: AttachmentSettings): Promise<string> {
   if (root === undefined) {
     if (!unrestricted) {
       throw new Error("attachment_path is not available because the server has no MCP_DATA_ROOT. Send the file as attachment_base64 instead.");
@@ -62,9 +73,9 @@ async function resolveAttachmentPath(path: string, { root, unrestricted }: PathP
  * Turns the attachment inputs into the fields Sharesight takes (`attachment` as base64, and `attachment_filename`) and returns the
  * rest of the arguments unchanged. Removal sends both as null, which is how the Sharesight docs say to remove an attachment.
  *
- * @param paths - where attachment_path may read from
+ * @param settings - where attachment_path may read from, and the size limit
  */
-export async function withAttachment<T extends AttachmentArgs>(args: T, paths: PathPolicy): Promise<WithAttachment<T>> {
+export async function withAttachment<T extends AttachmentArgs>(args: T, settings: AttachmentSettings): Promise<WithAttachment<T>> {
   const { attachment_base64: base64, attachment_path: path, attachment_filename: filename, remove_attachment: remove, ...rest } = args;
 
   if (remove) {
@@ -80,7 +91,16 @@ export async function withAttachment<T extends AttachmentArgs>(args: T, paths: P
   }
 
   if (path !== undefined) {
-    const file = await resolveAttachmentPath(path, paths);
+    const file = await resolveAttachmentPath(path, settings);
+    const info = await stat(file);
+
+    if (!info.isFile()) {
+      throw new Error("attachment_path must be a regular file.");
+    }
+
+    // Checked before reading, so an oversized file is never loaded
+    checkSize(info.size, settings.maxBytes);
+
     const content = await readFile(file);
 
     return { ...rest, attachment: content.toString("base64"), attachment_filename: filename ?? basename(file) } as WithAttachment<T>;
@@ -90,6 +110,10 @@ export async function withAttachment<T extends AttachmentArgs>(args: T, paths: P
     if (filename === undefined) {
       throw new Error("attachment_filename is required with attachment_base64.");
     }
+
+    const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+
+    checkSize(Math.floor((base64.length * 3) / 4) - padding, settings.maxBytes);
 
     if (!BASE64.test(base64)) {
       throw new Error("attachment_base64 is not valid base64 (no line breaks, no data: prefix).");

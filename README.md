@@ -65,7 +65,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 This server exposes **45 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: labels, file imports, connections, the watchlist, adjustments, bulk prices, and the lookups other than countries. Each area lists its read tools first, then its write tools.
 
-Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
+Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
 ### Portfolios
 | Tool | Kind | Description |
@@ -165,9 +165,9 @@ Sharesight lets a trade or payout carry one attached file, such as a contract no
 - **Not set, stdio:** any file the server process can read.
 - **Not set, HTTP:** `attachment_path` is refused. Send `attachment_base64`.
 
-The directory must exist when the server starts. Anyone who can call the server can attach any file inside the root to a trade or payout, so keep the root to files you are happy to upload.
+An attachment may be at most `MCP_MAX_ATTACHMENT_BYTES` (10 MiB by default), measured on the file itself and checked before a file is read. Sharesight documents no limit of its own. A path must also be a regular file. The directory must exist when the server starts. Anyone who can call the server can attach any file inside the root to a trade or payout, so keep the root to files you are happy to upload.
 
-A new attachment replaces the existing one. Downloading is not possible, because the Sharesight API does not offer it. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
+A new attachment replaces the existing one, and a replaced or removed attachment cannot be read back. For that reason `update_trade` and `update_payout` are annotated as destructive. Downloading is not possible, because the Sharesight API does not offer it. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
 
 ### Read-only mode
 
@@ -198,6 +198,7 @@ Sharesight offers no filter or paging options for holdings, so the server fetche
 | `MCP_CACHE_TTL_SECONDS` | `60` | How long the holdings list is cached for later pages. `0` turns the cache off. |
 | `MCP_READ_ONLY` | `false` | `true` leaves out the tools that create, change or delete data. See [Read-only mode](#read-only-mode). |
 | `MCP_DATA_ROOT` | none | Directory that `attachment_path` reads from. See [Attachments](#attachments). |
+| `MCP_MAX_ATTACHMENT_BYTES` | `10485760` | Largest attachment, in bytes. See [Attachments](#attachments). |
 | `MCP_CURSOR_SECRET` | random | Signs cursors. By default each process picks its own, so a cursor stops working after a restart and does not work on another instance. Set the same value on every instance to avoid that. |
 | `SHARESIGHT_BASE_URL` | `https://api.sharesight.com` | Replaces the Sharesight address, for tests or a proxy. It must be `https`, except that `http` is accepted for localhost, because your client secret is sent to this address. It cannot have a query or fragment. |
 

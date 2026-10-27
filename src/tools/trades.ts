@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { attachmentInput, attachmentRemoval, withAttachment, type PathPolicy } from "./attachments.js";
-import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
+import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
+import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult } from "./common.js";
 
 const ATTACHMENT_HELP = "Trades list their attachments (id, file name, size, type) but Sharesight offers no way to download one.";
 
@@ -95,8 +95,8 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
   );
 }
 
-/** @param paths - where attachment_path may read from */
-export function registerTradeWriteTools(server: McpServer, client: SharesightClient, paths: PathPolicy) {
+/** @param paths - where attachment_path may read from, and the size limit */
+export function registerTradeWriteTools(server: McpServer, client: SharesightClient, paths: AttachmentSettings) {
   server.registerTool(
     "create_trade",
     {
@@ -117,7 +117,7 @@ export function registerTradeWriteTools(server: McpServer, client: SharesightCli
     "update_trade",
     {
       description: "Updates a trade. Giving a new attachment replaces the existing one.",
-      annotations: UPDATE,
+      annotations: OVERWRITE,
       inputSchema: z.object({
         trade_id: z.number().describe("The trade ID"),
         ...tradeFields,

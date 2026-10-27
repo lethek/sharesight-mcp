@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { HoldingsLister } from "../holdings-list.js";
 import type { SharesightClient } from "../sharesight-client.js";
-import type { PathPolicy } from "./attachments.js";
+import type { AttachmentSettings } from "./attachments.js";
 import { registerAccountReadTools, registerAccountWriteTools } from "./account.js";
 import { registerCouponRateReadTools, registerCouponRateWriteTools } from "./coupon-rates.js";
 import { registerCustomInvestmentPriceReadTools, registerCustomInvestmentPriceWriteTools } from "./custom-investment-prices.js";
@@ -16,8 +16,8 @@ export interface ToolOptions {
   holdings: HoldingsLister;
   /** Leaves out every tool that creates, changes or deletes data */
   readOnly: boolean;
-  /** Where the attachment tools may read files from */
-  paths: PathPolicy;
+  /** Where the attachment tools may read files from, and how large an attachment may be */
+  paths: AttachmentSettings;
 }
 
 /**

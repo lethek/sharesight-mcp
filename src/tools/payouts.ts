@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { attachmentInput, attachmentRemoval, withAttachment, type PathPolicy } from "./attachments.js";
-import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
+import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
+import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult } from "./common.js";
 
 const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but Sharesight offers no way to download one.";
 
@@ -90,8 +90,8 @@ export function registerPayoutReadTools(server: McpServer, client: SharesightCli
   );
 }
 
-/** @param paths - where attachment_path may read from */
-export function registerPayoutWriteTools(server: McpServer, client: SharesightClient, paths: PathPolicy) {
+/** @param paths - where attachment_path may read from, and the size limit */
+export function registerPayoutWriteTools(server: McpServer, client: SharesightClient, paths: AttachmentSettings) {
   server.registerTool(
     "create_payout",
     {
@@ -117,7 +117,7 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
     "update_payout",
     {
       description: "Updates a payout. Giving a new attachment replaces the existing one. Give the details object that matches the payout's type.",
-      annotations: UPDATE,
+      annotations: OVERWRITE,
       inputSchema: z.object({
         payout_id: z.number().describe("The payout ID"),
         ...payoutFields,

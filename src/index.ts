@@ -25,6 +25,7 @@ import { VERSION } from "./version.js";
 import { MemoryCache } from "./cache.js";
 import { CursorCodec } from "./cursor.js";
 import { HoldingsLister } from "./holdings-list.js";
+import { DEFAULT_MAX_ATTACHMENT_BYTES } from "./tools/attachments.js";
 import { registerTools } from "./tools/index.js";
 
 const DEFAULT_MAX_RESPONSE_CHARS = 30_000;
@@ -89,6 +90,17 @@ function readDataRoot(env: NodeJS.ProcessEnv): string | undefined {
   }
 
   return root;
+}
+
+/** Reads MCP_MAX_ATTACHMENT_BYTES: the largest file an attachment may be. */
+function readMaxAttachmentBytes(env: NodeJS.ProcessEnv): number {
+  const text = env.MCP_MAX_ATTACHMENT_BYTES?.trim() || String(DEFAULT_MAX_ATTACHMENT_BYTES);
+
+  if (!/^\d+$/.test(text) || Number(text) < 1) {
+    throw new Error(`MCP_MAX_ATTACHMENT_BYTES must be a whole number of at least 1, got "${text}".`);
+  }
+
+  return Number(text);
 }
 
 function createOAuthManager(baseUrl: string): OAuthManager {
@@ -177,6 +189,7 @@ async function runServe(): Promise<void> {
   let baseUrl: string;
   let readOnly: boolean;
   let dataRoot: string | undefined;
+  let maxAttachmentBytes: number;
 
   try {
     httpConfig = readServeConfig(process.argv.slice(3), process.env);
@@ -184,6 +197,7 @@ async function runServe(): Promise<void> {
     baseUrl = readBaseUrl(process.env);
     readOnly = readReadOnly(process.env);
     dataRoot = readDataRoot(process.env);
+    maxAttachmentBytes = readMaxAttachmentBytes(process.env);
   } catch (error) {
     console.error(`Error: ${errorMessage(error)}`);
     process.exitCode = 1;
@@ -206,7 +220,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client, { holdings, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig } });
+    registerTools(server, client, { holdings, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
 
     return server;
   };
@@ -296,6 +310,7 @@ Commands:
 Environment variables:
   MCP_READ_ONLY    "true" leaves out every tool that creates, changes or deletes data (default "false")
   MCP_DATA_ROOT    Directory attachment_path reads from, relative to it and confined to it; required for attachment_path over HTTP
+  MCP_MAX_ATTACHMENT_BYTES  Largest attachment in bytes (default ${DEFAULT_MAX_ATTACHMENT_BYTES})
 
 HTTP environment variables:
   MCP_PORT         Port to listen on (default ${DEFAULT_HTTP_PORT})

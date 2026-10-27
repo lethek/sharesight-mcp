@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withAttachment, type PathPolicy } from "../src/tools/attachments.js";
+import { withAttachment, type AttachmentSettings } from "../src/tools/attachments.js";
 import { withServer } from "./stdio-session.js";
 
 const CONTENT = "contract note text";
 const BASE64 = Buffer.from(CONTENT).toString("base64");
 
-const ANYWHERE: PathPolicy = { unrestricted: true };
-const NOWHERE: PathPolicy = { unrestricted: false };
+const ANYWHERE: AttachmentSettings = { unrestricted: true, maxBytes: 1024 };
+const NOWHERE: AttachmentSettings = { unrestricted: false, maxBytes: 1024 };
 
 describe("withAttachment", () => {
   let dir: string;
@@ -64,6 +64,34 @@ describe("withAttachment", () => {
   });
 });
 
+describe("the size limit", () => {
+  let dir: string;
+  const settings = (maxBytes: number): AttachmentSettings => ({ unrestricted: true, maxBytes });
+
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "sharesight-mcp-size-"));
+    writeFileSync(join(dir, "ten.bin"), Buffer.alloc(10, 1));
+  });
+
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("a file at the limit is accepted and one byte over is refused", async () => {
+    assert.equal((await withAttachment({ attachment_path: join(dir, "ten.bin") }, settings(10))).attachment, Buffer.alloc(10, 1).toString("base64"));
+    await assert.rejects(withAttachment({ attachment_path: join(dir, "ten.bin") }, settings(9)), /10 bytes, over the limit of 9 bytes/);
+  });
+
+  test("base64 is measured by the file it decodes to", async () => {
+    const ten = Buffer.alloc(10, 1).toString("base64");
+
+    assert.ok((await withAttachment({ attachment_base64: ten, attachment_filename: "a" }, settings(10))).attachment);
+    await assert.rejects(withAttachment({ attachment_base64: ten, attachment_filename: "a" }, settings(9)), /over the limit of 9 bytes/);
+  });
+
+  test("a directory is not a regular file", async () => {
+    await assert.rejects(withAttachment({ attachment_path: dir }, settings(1000)), /regular file/);
+  });
+});
+
 describe("a data root", () => {
   let base: string;
   let root: string;
@@ -89,7 +117,7 @@ describe("a data root", () => {
   after(() => rmSync(base, { recursive: true, force: true }));
 
   // The policy an HTTP server gets: nothing is allowed without a root
-  const policy = (): PathPolicy => ({ root, unrestricted: false });
+  const policy = (): AttachmentSettings => ({ root, unrestricted: false, maxBytes: 1024 });
   const read = (path: string) => withAttachment({ attachment_path: path }, policy());
 
   test("reads a file by path relative to the root, over HTTP too", async () => {
@@ -122,7 +150,7 @@ describe("a data root", () => {
   });
 
   test("the root also confines a stdio server", async () => {
-    await assert.rejects(withAttachment({ attachment_path: join(base, "outside.txt") }, { root, unrestricted: true }), /inside the server's data root/);
+    await assert.rejects(withAttachment({ attachment_path: join(base, "outside.txt") }, { root, unrestricted: true, maxBytes: 1024 }), /inside the server's data root/);
   });
 });
 

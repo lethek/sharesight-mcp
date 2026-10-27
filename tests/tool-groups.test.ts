@@ -52,7 +52,10 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
   },
 };
 
-const READS = Object.values(AREAS).flatMap((area) => area.read).sort();
+/** Update tools that can replace or remove an attachment, which cannot be read back, so they are marked destructive. */
+const OVERWRITES = ["update_trade", "update_payout"];
+
+const READS =Object.values(AREAS).flatMap((area) => area.read).sort();
 const WRITES = Object.values(AREAS).flatMap((area) => area.write).sort();
 
 interface ListedTool {
@@ -90,6 +93,8 @@ describe("tool groups", () => {
           assert.deepEqual(annotations, { readOnlyHint: true }, `${name} ${hints}`);
         } else if (/^(create|apply)_/.test(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, `${name} ${hints}`);
+        } else if (OVERWRITES.includes(name)) {
+          assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, `${name} ${hints}`);
         } else if (/^update_/.test(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, `${name} ${hints}`);
         } else if (/^delete_/.test(name)) {
@@ -101,11 +106,11 @@ describe("tool groups", () => {
     });
   });
 
-  test("only the delete tools are marked destructive", async () => {
+  test("only the delete tools and the attachment-overwriting updates are marked destructive", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       const destructive = (await listTools(request)).filter((tool) => tool.annotations?.destructiveHint === true);
 
-      assert.deepEqual(names(destructive), WRITES.filter((name) => name.startsWith("delete_")));
+      assert.deepEqual(names(destructive), WRITES.filter((name) => name.startsWith("delete_") || OVERWRITES.includes(name)).sort());
     });
   });
 });
