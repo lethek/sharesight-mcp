@@ -41,8 +41,16 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_labels", "get_label"],
     write: ["create_label", "update_label", "delete_label", "delete_holding_label"],
   },
+  "unconfirmed payouts and trades": {
+    read: ["list_unconfirmed_payouts", "list_unconfirmed_trades", "list_rejected_trades"],
+    write: ["confirm_payout", "reject_payout"],
+  },
   "performance and portfolio reports": {
     read: [
+      "get_capital_gains_report",
+      "get_unrealised_cgt_report",
+      "get_diversity_report",
+      "get_valuation_report",
       "get_performance_report",
       "get_performance_index_chart",
       "list_portfolio_reports",
@@ -53,7 +61,7 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     write: [],
   },
   "account and reference": {
-    read: ["show_coupon_code", "list_countries"],
+    read: ["show_coupon_code", "get_my_user", "list_user_instruments", "list_countries"],
     write: ["apply_coupon_code", "delete_coupon_code"],
   },
 };
@@ -76,7 +84,7 @@ describe("tool groups", () => {
   test("the server offers exactly the grouped tools", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       assert.deepEqual(names(await listTools(request)), [...READS, ...WRITES].sort());
-      assert.equal(READS.length + WRITES.length, 54);
+      assert.equal(READS.length + WRITES.length, 65);
     });
   });
 
@@ -101,9 +109,9 @@ describe("tool groups", () => {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, `${name} ${hints}`);
         } else if (OVERWRITES.includes(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, `${name} ${hints}`);
-        } else if (/^update_/.test(name)) {
+        } else if (/^(update|confirm)_/.test(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, `${name} ${hints}`);
-        } else if (/^delete_/.test(name)) {
+        } else if (/^(delete|reject)_/.test(name)) {
           assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, `${name} ${hints}`);
         } else {
           assert.fail(`${name} does not start with a known verb, so its annotations cannot be checked`);
@@ -116,7 +124,7 @@ describe("tool groups", () => {
     await withServer([], {}, async (_call, _mock, request) => {
       const destructive = (await listTools(request)).filter((tool) => tool.annotations?.destructiveHint === true);
 
-      assert.deepEqual(names(destructive), WRITES.filter((name) => name.startsWith("delete_") || OVERWRITES.includes(name)).sort());
+      assert.deepEqual(names(destructive), WRITES.filter((name) => /^(delete|reject)_/.test(name) || OVERWRITES.includes(name)).sort());
     });
   });
 });

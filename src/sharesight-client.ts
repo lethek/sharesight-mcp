@@ -58,6 +58,8 @@ export class SharesightClient {
   private oauth: OAuthManager;
   /** Base URL for all Sharesight API v3 endpoints */
   private apiBaseUrl: string;
+  /** The host the API versions share, for the endpoints that are only in v2 */
+  private origin: string;
 
   /**
    * Creates a new SharesightClient instance.
@@ -67,7 +69,8 @@ export class SharesightClient {
    */
   constructor(oauth: OAuthManager, baseUrl: string = DEFAULT_BASE_URL) {
     this.oauth = oauth;
-    this.apiBaseUrl = `${baseUrl.replace(/\/+$/, "")}/api/v3`;
+    this.origin = baseUrl.replace(/\/+$/, "");
+    this.apiBaseUrl = `${this.origin}/api/v3`;
   }
 
   private async getAccessToken(): Promise<string> {
@@ -95,7 +98,8 @@ export class SharesightClient {
     queryParams?: Record<string, string | number | boolean | undefined>,
     timeoutMs: number = REQUEST_TIMEOUT_MS
   ): Promise<T> {
-    const url = new URL(`${this.apiBaseUrl}${endpoint}`);
+    // An endpoint that starts with /api/ names its own version, like /api/v2/my_user.json
+    const url = new URL(endpoint.startsWith("/api/") ? `${this.origin}${endpoint}` : `${this.apiBaseUrl}${endpoint}`);
 
     const rethrowTimeout = (error: unknown): never => {
       if (error instanceof Error && error.name === "TimeoutError") {
@@ -913,4 +917,41 @@ export class SharesightClient {
   async deleteHoldingLabel(holdingId: number, label: string): Promise<PassThroughResponse> {
     return this.request<PassThroughResponse>("DELETE", `/holdings/${holdingId}/labels/${encodeURIComponent(label)}`);
   }
+
+  // ==========================================================================
+  // v2 endpoints, for what v3 does not offer
+  // ==========================================================================
+
+  /** One of the v2 reports: capital_gains, diversity, unrealised_cgt or valuation. */
+  async getReportV2(portfolioId: number, report: "capital_gains" | "diversity" | "unrealised_cgt" | "valuation", options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/portfolios/${portfolioId}/${report}.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  async getMyUser(): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", "/api/v2/my_user.json");
+  }
+
+  async listUserInstruments(): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", "/api/v2/user_instruments.json");
+  }
+
+  /** Lists the payouts of a portfolio, confirmed and unconfirmed. v2 is the only version that shows the unconfirmed ones. */
+  async listPortfolioPayoutsV2(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/portfolios/${portfolioId}/payouts.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Lists the trades of a portfolio, confirmed and unconfirmed. */
+  async listPortfolioTradesV2(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/portfolios/${portfolioId}/trades.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  async listRejectedTradesV2(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/rejected_trades.json`, undefined, options);
+  }
+
+  /** Confirms or rejects an unconfirmed payout, which the v2 API does with a POST of a new state. */
+  async setPayoutStateV2(data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", "/api/v2/payouts.json", { payout: data });
+  }
+
 }

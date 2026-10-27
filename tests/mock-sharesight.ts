@@ -97,6 +97,28 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
       return;
     }
 
+    // v2: confirming or rejecting a payout is a POST of a new state, and the portfolio lists mix confirmed and unconfirmed items
+    if (req.method === "POST" && path === "/api/v2/payouts.json") {
+      entry.body = text ? JSON.parse(text) : undefined;
+      send(res, 200, { api_transaction: { id: 1 } });
+      return;
+    }
+
+    if (req.method === "GET" && /^\/api\/v2\/portfolios\/\d+\/payouts\.json$/.test(path)) {
+      send(res, 200, { payouts: [{ id: 1, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 77 }], query: new URL(req.url ?? "/", "http://localhost").search });
+      return;
+    }
+
+    if (req.method === "GET" && /^\/api\/v2\/portfolios\/\d+\/trades\.json$/.test(path)) {
+      send(res, 200, { trades: [{ id: 2, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 88 }, { id: null, state: "unconfirmed", company_event_id: 89 }] });
+      return;
+    }
+
+    if (req.method === "GET" && /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|user_instruments\.json|holdings\/\d+\/rejected_trades\.json)$/.test(path)) {
+      send(res, 200, { query: new URL(req.url ?? "/", "http://localhost").search });
+      return;
+    }
+
     send(res, 404, { error: `no mock for ${req.method} ${path}` });
   });
 

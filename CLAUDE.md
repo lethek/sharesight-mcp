@@ -142,6 +142,9 @@ The git tag is the only place a release version is written. `package.json` holds
 - Dates: `YYYY-MM-DD` format
 - Pagination: cursor-based with `page` and `per_page`
 
+### Sharesight API v2
+A few tools use v2, because v3 lacks them: the capital gains, unrealised CGT, diversity and valuation reports, `my_user`, `user_instruments`, and the unconfirmed payout and trade lists with payout confirm and reject. The same OAuth token works. A client method reaches v2 by passing an endpoint that starts with `/api/v2/`. The v2 docs are at `https://portfolio.sharesight.com/api/2/doc/api_data.json`. Do not add a trade confirm or reject tool on `POST /api/v2/trades.json`: live tests showed it creates a new confirmed trade instead, even with `state: "rejected"`.
+
 ### Error Handling
 The client throws errors for non-2xx responses. The MCP handler catches these and returns `isError: true` responses.
 

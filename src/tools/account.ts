@@ -24,6 +24,38 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
   );
 
   server.registerTool(
+    "get_my_user",
+    {
+      description: "Returns information on the current user (v2 API)",
+      annotations: READ_ONLY,
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        return formatResult(await client.getMyUser());
+      } catch (error) {
+        return formatError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "list_user_instruments",
+    {
+      description: "Lists the instruments held in the current user's portfolios, with prices and fundamentals (v2 API)",
+      annotations: READ_ONLY,
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        return formatResult(await client.listUserInstruments());
+      } catch (error) {
+        return formatError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "list_countries",
     {
       description: "Retrieves Sharesight country definitions",

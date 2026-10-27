@@ -63,7 +63,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **54 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, unconfirmed payouts and trades, and the lookups other than countries. Each area lists its read tools first, then its write tools.
+This server exposes **65 tools** covering most Sharesight v3 API endpoints plus the v2 endpoints that v3 lacks, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, cash accounts, portfolio and membership management, and the lookups other than countries. Each area lists its read tools first, then its write tools.
 
 Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
@@ -149,9 +149,26 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 
 Label names allow only letters, digits, spaces and underscores. Detaching the last holding removes the label.
 
+### Unconfirmed payouts and trades (v2 API)
+Sharesight creates payouts and trades from company events and leaves them unconfirmed until you accept or reject them. Only the v2 API lists and changes them, and this server uses it for these tools.
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_unconfirmed_payouts` | Read | Payouts waiting to be confirmed, with the `company_event_id` each needs |
+| `list_unconfirmed_trades` | Read | Trades waiting to be confirmed |
+| `list_rejected_trades` | Read | Trades rejected for a holding |
+| `confirm_payout` | Write | Confirm a payout, optionally as a reinvestment (DRP) |
+| `reject_payout` | Write | Reject a payout so it no longer appears in the portfolio |
+
+Confirming or rejecting a payout also settles its dividend reinvestment trade. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Confirming an interest payout by `paid_on` has not been tested against the live API.
+
 ### Performance and portfolio reports
 | Tool | Kind | Description |
 |------|------|-------------|
+| `get_valuation_report` | Read | Valuation report with grouping options (v2 API) |
+| `get_diversity_report` | Read | Diversity report with grouping options (v2 API) |
+| `get_capital_gains_report` | Read | Capital gains tax report for Australian portfolios (v2 API) |
+| `get_unrealised_cgt_report` | Read | Unrealised capital gains tax report for Australian portfolios (v2 API) |
 | `get_performance_report` | Read | Detailed performance breakdown with gains analysis |
 | `get_performance_index_chart` | Read | Chart data for visualizing portfolio performance |
 | `list_portfolio_reports` | Read | List the tax or tools reports saved for a portfolio |
@@ -163,6 +180,8 @@ Label names allow only letters, digits, spaces and underscores. Detaching the la
 | Tool | Kind | Description |
 |------|------|-------------|
 | `show_coupon_code` | Read | View applied promotional coupon code |
+| `get_my_user` | Read | Information on the current user (v2 API) |
+| `list_user_instruments` | Read | Instruments held across the user's portfolios, with prices and fundamentals (v2 API) |
 | `list_countries` | Read | Get Sharesight-supported countries and their settings |
 | `apply_coupon_code` | Write | Apply a promotional coupon code |
 | `delete_coupon_code` | Write | Remove applied coupon code |

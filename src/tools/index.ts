@@ -4,6 +4,7 @@ import type { SharesightClient } from "../sharesight-client.js";
 import type { AttachmentSettings } from "./attachments.js";
 import { registerAccountReadTools, registerAccountWriteTools } from "./account.js";
 import { registerAdjustmentReadTools, registerAdjustmentWriteTools } from "./adjustments.js";
+import { registerConfirmationReadTools, registerConfirmationWriteTools } from "./confirmations.js";
 import { registerCouponRateReadTools, registerCouponRateWriteTools } from "./coupon-rates.js";
 import { registerCustomInvestmentPriceReadTools, registerCustomInvestmentPriceWriteTools } from "./custom-investment-prices.js";
 import { registerCustomInvestmentReadTools, registerCustomInvestmentWriteTools } from "./custom-investments.js";
@@ -11,6 +12,7 @@ import { registerHoldingReadTools, registerHoldingWriteTools } from "./holdings.
 import { registerLabelReadTools, registerLabelWriteTools } from "./labels.js";
 import { registerPayoutReadTools, registerPayoutWriteTools } from "./payouts.js";
 import { registerPerformanceReadTools } from "./performance.js";
+import { registerReportReadTools } from "./reports.js";
 import { registerTradeReadTools, registerTradeWriteTools } from "./trades.js";
 import { registerPortfolioReadTools, registerPortfolioWriteTools } from "./portfolios.js";
 
@@ -36,7 +38,9 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
   registerCouponRateReadTools(server, client);
   registerAdjustmentReadTools(server, client);
   registerLabelReadTools(server, client);
+  registerConfirmationReadTools(server, client);
   registerPerformanceReadTools(server, client);
+  registerReportReadTools(server, client);
   registerAccountReadTools(server, client);
 
   if (readOnly) {
@@ -52,5 +56,6 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
   registerCouponRateWriteTools(server, client);
   registerAdjustmentWriteTools(server, client);
   registerLabelWriteTools(server, client);
+  registerConfirmationWriteTools(server, client);
   registerAccountWriteTools(server, client);
 }
