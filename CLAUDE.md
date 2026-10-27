@@ -16,10 +16,15 @@ This is an MCP (Model Context Protocol) server that wraps the Sharesight v3 API,
 ```
 sharesight-mcp/
 ├── src/
-│   ├── index.ts              # CLI entry point with serve and auth commands
-│   ├── oauth.ts              # OAuth 2.0 token management and refresh
+│   ├── index.ts              # CLI entry point with the serve command
+│   ├── oauth.ts              # OAuth 2.0 client credentials token management
 │   ├── sharesight-client.ts  # HTTP client for Sharesight API
-│   └── types.ts              # TypeScript interfaces for API types
+│   ├── types.ts              # TypeScript interfaces for API types
+│   ├── *.test.ts             # node:test suites (oauth, client, startup)
+│   └── test-helpers.ts       # stubFetch and response builders shared by the tests
+├── scripts/                  # Build helpers (clean-test-build.mjs, used by npm test)
+├── tsconfig.build.json       # Used by npm run build; leaves the tests out of dist/
+├── tsconfig.test.json        # Builds everything, tests included, into .test-build/ (gitignored)
 ├── dist/                     # Compiled output (gitignored)
 ├── package.json
 ├── tsconfig.json
@@ -56,6 +61,7 @@ npm install     # Install dependencies
 npm run build   # Compile TypeScript to dist/
 npm run dev     # Watch mode for development
 npm start       # Run the compiled server
+npm test        # Build the tests into .test-build/ and run the node:test suites
 ```
 
 ## Adding a New Tool
@@ -110,7 +116,7 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 
 ## Testing
 
-Currently no automated tests. Test manually:
+`npm test` builds `src/*.test.ts` into `.test-build/` and runs them with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (two tests use a local loopback server). It covers token caching, the 401 retry, timeouts and the startup checks. The tool handlers in `src/index.ts` are not covered. Test those manually:
 
 1. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
 2. Run `node dist/index.js serve`

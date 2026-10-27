@@ -153,6 +153,7 @@ Common errors:
 npm run dev     # Watch mode
 npm run build   # Build for production
 npm start       # Run the server
+npm test        # Build and run the tests
 ```
 
 ## License

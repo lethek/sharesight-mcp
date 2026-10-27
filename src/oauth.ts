@@ -79,7 +79,9 @@ export class OAuthManager {
     const data = (await response.json()) as TokenResponse;
     const expiresIn = Number(data.expires_in) || DEFAULT_EXPIRES_IN;
     this.accessToken = data.access_token;
-    this.expiresAt = Date.now() + expiresIn * 1000 - 60000; // 1 minute buffer
+    // Refresh a minute early, or halfway through the lifetime for short-lived tokens
+    const bufferMs = Math.min(60000, (expiresIn * 1000) / 2);
+    this.expiresAt = Date.now() + expiresIn * 1000 - bufferMs;
 
     return data.access_token;
   }
