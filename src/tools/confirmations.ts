@@ -232,7 +232,7 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
 
 /** Whether the holding has an unconfirmed payout on that date */
 async function hasPendingPayout(client: SharesightClient, holdingId: number, paidOn: string): Promise<boolean> {
-  const payouts = await client.listHoldingPayoutsV2(holdingId, { start_date: paidOn, end_date: paidOn });
+  const payouts = await client.listHoldingPayoutsV2(holdingId, { start_date: paidOn, end_date: paidOn, use_date: "paid_on" });
 
   return itemsOf(payouts, "payouts").some((payout) => payout.state === "unconfirmed" && payout.paid_on === paidOn);
 }
