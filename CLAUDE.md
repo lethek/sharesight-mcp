@@ -19,6 +19,7 @@ sharesight-mcp/
 │   ├── index.ts              # CLI entry point with the serve command
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
+│   ├── version.ts            # VERSION, read from package.json at runtime
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
 │   ├── sharesight-client.ts  # HTTP client for Sharesight API
 │   ├── types.ts              # TypeScript interfaces for API types
@@ -103,6 +104,10 @@ npm test        # Build the tests into .test-build/ and run the node:test suites
      }
    );
    ```
+
+## Versioning
+
+The git tag is the only place a release version is written. `package.json` holds the placeholder `0.0.0-dev`, and `src/version.ts` reads it at runtime for the server version. The image build replaces the placeholder with the version from a `v<semver>` tag, or `0.0.0-main.<sha>` for a main commit. Never hardcode a version in the source.
 
 ## API Conventions
 

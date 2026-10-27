@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { VERSION } from "./version.js";
 
 const indexPath = fileURLToPath(new URL("./index.js", import.meta.url));
 const STARTUP_LIMIT_MS = 15_000;
@@ -86,6 +87,32 @@ describe("serve startup", () => {
 
     assert.match(result.stderr, /Warning: could not get an access token at startup/);
     assert.match(result.stderr, /running on stdio/);
+  });
+
+  test("reports the package.json version to clients", async () => {
+    const child = spawn(process.execPath, ["--import", pathToFileURL(offlinePreload).href, indexPath, "serve"], {
+      env: { ...inheritedEnv(), ...credentials },
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    const timer = setTimeout(() => child.kill(), STARTUP_LIMIT_MS);
+
+    try {
+      const reply = new Promise<string>((resolve, reject) => {
+        let out = "";
+        child.stdout.on("data", (chunk) => {
+          out += chunk;
+          if (out.includes("\n")) resolve(out);
+        });
+        child.on("close", () => reject(new Error(`server closed before replying. stdout: ${out}`)));
+      });
+      const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } } };
+      child.stdin.write(`${JSON.stringify(initialize)}\n`);
+
+      assert.equal(JSON.parse(await reply).result.serverInfo.version, VERSION);
+    } finally {
+      clearTimeout(timer);
+      child.kill();
+    }
   });
 
   test("--http listens on the configured port", async () => {

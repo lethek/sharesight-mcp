@@ -20,6 +20,7 @@ import { SharesightClient } from "./sharesight-client.js";
 import { OAuthManager, TokenRequestError } from "./oauth.js";
 import { MCP_PATH, assertAuthConfigured, endpointUrl, shutdownHttpServer, startHttpServer, type HttpServerOptions } from "./http.js";
 import { errorMessage } from "./error-message.js";
+import { VERSION } from "./version.js";
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const DEFAULT_HTTP_PORT = 3000;
@@ -774,7 +775,7 @@ async function runServe(): Promise<void> {
   const createServer = (): McpServer => {
     const server = new McpServer({
       name: "sharesight-mcp",
-      version: "2.0.0",
+      version: VERSION,
     });
 
     registerTools(server, client);
