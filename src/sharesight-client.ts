@@ -18,6 +18,7 @@ import {
   CustomInvestmentPricesResponse,
   CustomInvestmentsResponse,
   HoldingsResponse,
+  PassThroughResponse,
   PerformanceIndexChartResponse,
   PerformanceReportResponse,
   PortfoliosResponse,
@@ -27,6 +28,7 @@ import {
   UpdateCustomInvestmentRequest,
   UpdateHoldingRequest,
   UpdatePortfolioUserSettingRequest,
+  QueryParams,
   BaseResponse,
 } from "./types.js";
 import { DEFAULT_BASE_URL, OAuthManager } from "./oauth.js";
@@ -780,5 +782,84 @@ export class SharesightClient {
       queryParams,
       REPORT_REQUEST_TIMEOUT_MS
     );
+  }
+
+  /** Lists the reports saved for a portfolio. */
+  async listPortfolioReports(portfolioId: number): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/reports`);
+  }
+
+  /** Retrieves the holdings overview of a portfolio: values and gains per holding, optionally grouped. */
+  async getPortfolioOverview(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/overview`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Retrieves the totals of a portfolio. */
+  async getPortfolioTotals(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/totals`, undefined, options);
+  }
+
+  /** Compares a portfolio with a benchmark instrument. */
+  async getPortfolioBenchmark(portfolioId: number, options: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/benchmark.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Retrieves the current value of a portfolio, optionally in another currency. */
+  async getPortfolioValue(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/value`, undefined, options);
+  }
+
+  /** Retrieves the value series and price difference of a portfolio. */
+  async getPortfolioValueData(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/portfolio_value_data.json`, undefined, options);
+  }
+
+  /** Lists the trades of a portfolio. */
+  async listTrades(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/trades.json`, undefined, options);
+  }
+
+  /** Lists the trades of a holding. */
+  async listHoldingTrades(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/holdings/${holdingId}/trades.json`, undefined, options);
+  }
+
+  async getTrade(id: number): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/trades/${id}.json`);
+  }
+
+  /** Creates a trade. The body is flat; an attachment goes in as base64 with its file name. */
+  async createTrade(data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", "/trades.json", data);
+  }
+
+  async updateTrade(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/trades/${id}.json`, data);
+  }
+
+  async deleteTrade(id: number): Promise<BaseResponse> {
+    return this.request<BaseResponse>("DELETE", `/trades/${id}.json`);
+  }
+
+  /** Lists the payouts (dividends and interest) of a holding. */
+  async listPayouts(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/holdings/${holdingId}/payouts`, undefined, options);
+  }
+
+  async getPayout(id: number): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/payouts/${id}`);
+  }
+
+  /** Creates a payout. The body is flat; an attachment goes in as base64 with its file name. */
+  async createPayout(holdingId: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/holdings/${holdingId}/payouts`, data);
+  }
+
+  async updatePayout(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/payouts/${id}`, data);
+  }
+
+  async deletePayout(id: number): Promise<BaseResponse> {
+    return this.request<BaseResponse>("DELETE", `/payouts/${id}`);
   }
 }

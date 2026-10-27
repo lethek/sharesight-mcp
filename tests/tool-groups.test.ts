@@ -13,6 +13,14 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_holdings", "list_portfolio_holdings", "get_holding"],
     write: ["update_holding", "delete_holding"],
   },
+  trades: {
+    read: ["list_trades", "list_holding_trades", "get_trade"],
+    write: ["create_trade", "update_trade", "delete_trade"],
+  },
+  payouts: {
+    read: ["list_payouts", "get_payout"],
+    write: ["create_payout", "update_payout", "delete_payout"],
+  },
   "custom investments": {
     read: ["list_custom_investments", "get_custom_investment"],
     write: ["create_custom_investment", "update_custom_investment", "delete_custom_investment"],
@@ -25,8 +33,17 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_coupon_rates"],
     write: ["create_coupon_rate", "update_coupon_rate", "delete_coupon_rate"],
   },
-  "performance reports": {
-    read: ["get_performance_report", "get_performance_index_chart"],
+  "performance and portfolio reports": {
+    read: [
+      "get_performance_report",
+      "get_performance_index_chart",
+      "list_portfolio_reports",
+      "get_portfolio_overview",
+      "get_portfolio_totals",
+      "get_portfolio_benchmark",
+      "get_portfolio_value",
+      "get_portfolio_value_data",
+    ],
     write: [],
   },
   "account and reference": {
@@ -50,7 +67,7 @@ describe("tool groups", () => {
   test("the server offers exactly the grouped tools", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       assert.deepEqual(names(await listTools(request)), [...READS, ...WRITES].sort());
-      assert.equal(READS.length + WRITES.length, 28);
+      assert.equal(READS.length + WRITES.length, 45);
     });
   });
 

@@ -907,3 +907,12 @@ export interface UpdatePortfolioUserSettingRequest {
   /** The settings to update */
   portfolio_user_settings: Partial<PortfolioUserSetting>;
 }
+
+/**
+ * A response whose body is passed through to the assistant as Sharesight sent it (trades, payouts and the portfolio reports),
+ * so only the common envelope is typed.
+ */
+export type PassThroughResponse = BaseResponse & Record<string, unknown>;
+
+/** Query values accepted by the client's request method */
+export type QueryParams = Record<string, string | number | boolean | undefined>;

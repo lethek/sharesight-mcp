@@ -185,7 +185,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client, { holdings, readOnly });
+    registerTools(server, client, { holdings, readOnly, allowFilePaths: !httpConfig });
 
     return server;
   };

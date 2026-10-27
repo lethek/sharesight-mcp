@@ -63,7 +63,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **28 tools** covering all Sharesight v3 API endpoints, grouped by feature area. Each area lists its read tools first, then its write tools.
+This server exposes **45 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: labels, file imports, connections, the watchlist, adjustments, bulk prices, and the lookups other than countries. Each area lists its read tools first, then its write tools.
 
 Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
@@ -83,6 +83,25 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | `get_holding` | Read | Get holding details with optional cost base and historical values |
 | `update_holding` | Write | Update holding settings (DRP configuration) |
 | `delete_holding` | Write | Remove a holding from a portfolio |
+
+### Trades
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_trades` | Read | List the trades in a portfolio, by date range or unique identifier |
+| `list_holding_trades` | Read | List the trades of a holding |
+| `get_trade` | Read | Get a trade by ID |
+| `create_trade` | Write | Create a trade, optionally with an [attachment](#attachments) |
+| `update_trade` | Write | Update a trade, or replace or remove its attachment |
+| `delete_trade` | Write | Remove a trade |
+
+### Payouts
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_payouts` | Read | List the payouts (dividends and interest) of a holding |
+| `get_payout` | Read | Get a payout by ID |
+| `create_payout` | Write | Create a payout, optionally with an [attachment](#attachments) |
+| `update_payout` | Write | Update a payout, or replace or remove its attachment |
+| `delete_payout` | Write | Remove a payout |
 
 ### Custom investments
 | Tool | Kind | Description |
@@ -109,11 +128,17 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | `update_coupon_rate` | Write | Modify a coupon rate |
 | `delete_coupon_rate` | Write | Remove a coupon rate |
 
-### Performance reports
+### Performance and portfolio reports
 | Tool | Kind | Description |
 |------|------|-------------|
 | `get_performance_report` | Read | Detailed performance breakdown with gains analysis |
 | `get_performance_index_chart` | Read | Chart data for visualizing portfolio performance |
+| `list_portfolio_reports` | Read | List the reports saved for a portfolio |
+| `get_portfolio_overview` | Read | Value and gains of each holding, optionally grouped |
+| `get_portfolio_totals` | Read | Portfolio totals |
+| `get_portfolio_benchmark` | Read | Compare a portfolio with a benchmark instrument |
+| `get_portfolio_value` | Read | Current portfolio value, optionally in another currency |
+| `get_portfolio_value_data` | Read | Portfolio value over time with the price difference |
 
 ### Account and reference
 | Tool | Kind | Description |
@@ -123,9 +148,22 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | `apply_coupon_code` | Write | Apply a promotional coupon code |
 | `delete_coupon_code` | Write | Remove applied coupon code |
 
+### Attachments
+
+Sharesight lets a trade or payout carry one attached file, such as a contract note or a statement. `create_trade`, `update_trade`, `create_payout` and `update_payout` take it in one of two ways:
+
+| Input | Effect |
+|-------|--------|
+| `attachment_base64` | The file, base64 encoded. Needs `attachment_filename`. |
+| `attachment_path` | A path on the machine running the server. The server reads and encodes the file, and the name defaults to the file's own. Only works over stdio, and is refused in [HTTP mode](#http-mode). |
+| `attachment_filename` | The file name with its extension |
+| `remove_attachment` | Update tools only: `true` removes the existing attachment |
+
+A new attachment replaces the existing one. Downloading is not possible, because the Sharesight API does not offer it. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
+
 ### Read-only mode
 
-Set `MCP_READ_ONLY=true` to leave out every write tool, so the server offers only the 14 read tools. The write tools are not registered at all, so a client cannot call them even if it ignores the annotations. The value is `true` or `false`, in any case, and anything else stops the server at startup.
+Set `MCP_READ_ONLY=true` to leave out every write tool, so the server offers only the 25 read tools. The write tools are not registered at all, so a client cannot call them even if it ignores the annotations. The value is `true` or `false`, in any case, and anything else stops the server at startup.
 
 ### Filtering and paging holdings
 
