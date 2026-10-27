@@ -30,9 +30,9 @@ describe("serve startup", () => {
   after(() => rmSync(dir, { recursive: true, force: true }));
 
   /** Starts the server with a stubbed fetch and resolves when it exits or prints `until`. */
-  function run(preload: string, env: Record<string, string>, until?: string): Promise<Run> {
+  function run(preload: string, env: Record<string, string>, until?: string, args: string[] = []): Promise<Run> {
     return new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, indexPath, "serve"], {
+      const child = spawn(process.execPath, ["--import", pathToFileURL(preload).href, indexPath, "serve", ...args], {
         env: { ...process.env, ...env },
         stdio: ["pipe", "ignore", "pipe"],
       });
@@ -71,6 +71,32 @@ describe("serve startup", () => {
 
     assert.match(result.stderr, /Warning: could not get an access token at startup/);
     assert.match(result.stderr, /running on stdio/);
+  });
+
+  test("--http listens on the configured port", async () => {
+    const result = await run(offlinePreload, { ...credentials, PORT: "0" }, "running on http://127.0.0.1:", ["--http"]);
+
+    assert.match(result.stderr, /running on http:\/\/127\.0\.0\.1:\d+\/mcp \(no auth token set\)/);
+  });
+
+  test("MCP_TRANSPORT=http selects HTTP without the flag", async () => {
+    const result = await run(offlinePreload, { ...credentials, MCP_TRANSPORT: "http", PORT: "0", MCP_AUTH_TOKEN: "t" }, "running on http://");
+
+    assert.match(result.stderr, /running on http:\/\/127\.0\.0\.1:\d+\/mcp\n/);
+  });
+
+  test("--http exits with code 1 on a public host without MCP_AUTH_TOKEN", async () => {
+    const result = await run(offlinePreload, { ...credentials, HOST: "0.0.0.0", PORT: "0", MCP_AUTH_TOKEN: "" }, undefined, ["--http"]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /MCP_AUTH_TOKEN is required/);
+  });
+
+  test("--http exits with code 1 on an invalid PORT", async () => {
+    const result = await run(offlinePreload, { ...credentials, PORT: "abc" }, undefined, ["--http"]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /PORT must be an integer/);
   });
 
   test("exits with code 1 when credentials are missing", async () => {

@@ -17,6 +17,10 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { SharesightClient } from "./sharesight-client.js";
 import { OAuthManager, TokenRequestError } from "./oauth.js";
+import { MCP_PATH, startHttpServer } from "./http.js";
+
+const DEFAULT_HTTP_HOST = "127.0.0.1";
+const DEFAULT_HTTP_PORT = 3000;
 
 // ============================================================================
 // Serve Command
@@ -713,7 +717,7 @@ function registerTools(server: McpServer, client: SharesightClient) {
   );
 }
 
-async function runServe(): Promise<void> {
+async function runServe(useHttp: boolean): Promise<void> {
   const oauth = createOAuthManager();
 
   try {
@@ -733,16 +737,58 @@ async function runServe(): Promise<void> {
 
   const client = new SharesightClient(oauth);
 
-  const server = new McpServer({
-    name: "sharesight-mcp",
-    version: "2.0.0",
-  });
+  const createServer = (): McpServer => {
+    const server = new McpServer({
+      name: "sharesight-mcp",
+      version: "2.0.0",
+    });
 
-  registerTools(server, client);
+    registerTools(server, client);
+
+    return server;
+  };
+
+  if (useHttp) {
+    await runHttp(createServer);
+    return;
+  }
 
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await createServer().connect(transport);
   console.error("Sharesight MCP server running on stdio");
+}
+
+async function runHttp(createServer: () => McpServer): Promise<void> {
+  const host = process.env.HOST?.trim() || DEFAULT_HTTP_HOST;
+  const port = Number(process.env.PORT?.trim() || DEFAULT_HTTP_PORT);
+  const authToken = process.env.MCP_AUTH_TOKEN?.trim() || undefined;
+
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    console.error(`Error: PORT must be an integer from 0 to 65535, got "${process.env.PORT}".`);
+    process.exitCode = 1;
+    return;
+  }
+
+  let httpServer;
+
+  try {
+    httpServer = await startHttpServer({ factory: createServer, host, port, authToken });
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const address = httpServer.address();
+  const listeningPort = typeof address === "object" && address ? address.port : port;
+  console.error(`Sharesight MCP server running on http://${host}:${listeningPort}${MCP_PATH}${authToken ? "" : " (no auth token set)"}`);
+
+  const shutdown = () => {
+    httpServer.close();
+    httpServer.closeAllConnections();
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 }
 
 // ============================================================================
@@ -757,11 +803,18 @@ Usage:
   sharesight-mcp <command>
 
 Commands:
-  serve   Run the MCP server (default)
+  serve [--http]   Run the MCP server over stdio (default) or Streamable HTTP
+
+HTTP environment variables:
+  PORT             Port to listen on (default ${DEFAULT_HTTP_PORT})
+  HOST             Address to bind (default ${DEFAULT_HTTP_HOST})
+  MCP_AUTH_TOKEN   Bearer token clients must send; required when HOST is not a loopback address
+  MCP_TRANSPORT    Set to "http" to use HTTP without the --http flag
 
 Examples:
-  sharesight-mcp serve    # Start the MCP server
-  sharesight-mcp          # Same as 'serve'
+  sharesight-mcp serve          # Start the MCP server on stdio
+  sharesight-mcp serve --http   # Start the MCP server on http://127.0.0.1:${DEFAULT_HTTP_PORT}${MCP_PATH}
+  sharesight-mcp                # Same as 'serve'
 `);
 }
 
@@ -769,9 +822,11 @@ async function main(): Promise<void> {
   const command = process.argv[2] || "serve";
 
   switch (command) {
-    case "serve":
-      await runServe();
+    case "serve": {
+      const useHttp = process.argv.includes("--http") || process.env.MCP_TRANSPORT?.trim().toLowerCase() === "http";
+      await runServe(useHttp);
       break;
+    }
     case "--help":
     case "-h":
       printUsage();

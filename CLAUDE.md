@@ -17,6 +17,7 @@ This is an MCP (Model Context Protocol) server that wraps the Sharesight v3 API,
 sharesight-mcp/
 ├── src/
 │   ├── index.ts              # CLI entry point with the serve command
+│   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
 │   ├── sharesight-client.ts  # HTTP client for Sharesight API
 │   ├── types.ts              # TypeScript interfaces for API types
@@ -36,8 +37,12 @@ sharesight-mcp/
 
 ### `src/index.ts`
 The main CLI entry point with one command:
-- `sharesight-mcp serve` - Run the MCP server (default)
-Contains tool definitions using Zod schemas for validation.
+- `sharesight-mcp serve` - Run the MCP server over stdio (default)
+- `sharesight-mcp serve --http` - Run it over Streamable HTTP (also `MCP_TRANSPORT=http`)
+Contains tool definitions using Zod schemas for validation. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside the shared `SharesightClient`.
+
+### `src/http.ts`
+Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `PORT`, `HOST` and `MCP_AUTH_TOKEN`.
 
 ### `src/oauth.ts`
 OAuth 2.0 manager class using the client credentials grant. Holds the access token in memory and requests a new one when it expires.
@@ -117,7 +122,7 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 
 ## Testing
 
-`npm test` builds `src/*.test.ts` into `.test-build/` and runs them with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (two tests use a local loopback server). It covers token caching, the 401 retry, timeouts and the startup checks. The tool handlers in `src/index.ts` are not covered. Test those manually:
+`npm test` builds `src/*.test.ts` into `.test-build/` and runs them with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). The tool handlers in `src/index.ts` are not covered. Test those manually:
 
 1. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
 2. Run `node dist/index.js serve`
@@ -143,6 +148,6 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 
 ## Notes
 
-- The server uses stdio transport (stdin/stdout)
+- The server uses stdio transport (stdin/stdout) unless started with `--http`
 - Authentication: OAuth client credentials, tokens held in memory
 - All tool responses are JSON stringified with 2-space indentation
