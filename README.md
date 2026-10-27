@@ -63,7 +63,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **43 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: labels, file imports, connections, the watchlist, adjustments, bulk prices, and the lookups other than countries. Each area lists its read tools first, then its write tools.
+This server exposes **65 tools** covering most Sharesight v3 API endpoints plus the v2 endpoints that v3 lacks, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, cash accounts, portfolio and membership management, and the lookups other than countries. Each area lists its read tools first, then its write tools.
 
 Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
@@ -128,9 +128,49 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | `update_coupon_rate` | Write | Modify a coupon rate |
 | `delete_coupon_rate` | Write | Remove a coupon rate |
 
+### Adjustments (custom investment dividends)
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_adjustments` | Read | List the dividends of an ordinary custom investment |
+| `get_adjustment` | Read | Get one adjustment |
+| `create_adjustment` | Write | Add a dividend, with optional DRP and franking |
+| `update_adjustment` | Write | Change an adjustment; only the fields sent change |
+| `delete_adjustment` | Write | Remove an adjustment |
+
+### Labels
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_labels` | Read | List a portfolio's labels and the holdings they are on |
+| `get_label` | Read | Get a label by name |
+| `create_label` | Write | Create a label and attach it to holdings |
+| `update_label` | Write | Attach a label to more holdings, creating it if missing |
+| `delete_label` | Write | Remove a label from the portfolio and all holdings |
+| `delete_holding_label` | Write | Detach a label from one holding |
+
+Label names allow only letters, digits, spaces and underscores. Detaching the last holding removes the label.
+
+### Unconfirmed payouts and trades (v2 API)
+Sharesight creates payouts and trades from company events and leaves them unconfirmed until you accept or reject them. Only the v2 API lists and changes them, and this server uses it for these tools.
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_unconfirmed_payouts` | Read | Payouts waiting to be confirmed, with the `company_event_id` each needs |
+| `list_unconfirmed_trades` | Read | Trades waiting to be confirmed |
+| `list_rejected_trades` | Read | Trades rejected for a holding |
+| `confirm_payout` | Write | Confirm a payout, with `reinvestment` or `skip_reinvestment` when the holding reinvests dividends |
+| `reject_payout` | Write | Reject a payout so it no longer appears in the portfolio |
+
+Dividend payouts are named by `company_event_id`, and interest payouts, which have none, by `paid_on`. The unconfirmed lists search 2000 to 2100 unless you narrow them, and say which dates they searched. They come in pages like the holdings lists: Sharesight returns the whole history, so the server fetches it once, keeps the unconfirmed items, and serves later pages from that list, which also keeps the pages steady while you confirm or reject items.
+
+Confirming or rejecting a payout also settles its dividend reinvestment trade. When a holding has one pending, `confirm_payout` refuses until you pass `reinvestment` (to keep the trade) or `skip_reinvestment` (to drop it), because confirming without either removes the trade. Sharesight answers a rejection by `paid_on` with a 500 error even though it rejects the payout, so `reject_payout` checks the holding and reports success when nothing is left pending. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Interest payouts, which have no `company_event_id`, are confirmed by `paid_on`.
+
 ### Performance and portfolio reports
 | Tool | Kind | Description |
 |------|------|-------------|
+| `get_valuation_report` | Read | Valuation report with grouping options (v2 API) |
+| `get_diversity_report` | Read | Diversity report with grouping options (v2 API) |
+| `get_capital_gains_report` | Read | Capital gains tax report for Australian portfolios (v2 API) |
+| `get_unrealised_cgt_report` | Read | Unrealised capital gains tax report for Australian portfolios (v2 API) |
 | `get_performance_report` | Read | Detailed performance breakdown with gains analysis |
 | `get_performance_index_chart` | Read | Chart data for visualizing portfolio performance |
 | `list_portfolio_reports` | Read | List the tax or tools reports saved for a portfolio |
@@ -142,6 +182,8 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | Tool | Kind | Description |
 |------|------|-------------|
 | `show_coupon_code` | Read | View applied promotional coupon code |
+| `get_my_user` | Read | Information on the current user (v2 API) |
+| `list_user_instruments` | Read | Instruments held across the user's portfolios, with prices and fundamentals (v2 API) |
 | `list_countries` | Read | Get Sharesight-supported countries and their settings |
 | `apply_coupon_code` | Write | Apply a promotional coupon code |
 | `delete_coupon_code` | Write | Remove applied coupon code |
@@ -165,7 +207,7 @@ Sharesight lets a trade or payout carry one attached file, such as a contract no
 
 An attachment may be at most `MCP_MAX_ATTACHMENT_BYTES` (10 MiB by default), measured on the file itself and checked before a file is read. Sharesight documents no limit of its own. A path must also be a regular file. The directory must exist when the server starts. Anyone who can call the server can attach any file inside the root to a trade or payout, so keep the root to files you are happy to upload.
 
-A new attachment replaces the existing one, and this server cannot read back a replaced or removed attachment. For that reason `update_trade` and `update_payout` are annotated as destructive. This server cannot download attachments. The v3 API has no download endpoint, and the older v2 API has `GET /documents/:id.json`, which this server does not use. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
+A new attachment replaces the existing one, and this server cannot read back a replaced or removed attachment. For that reason `update_trade` and `update_payout` are annotated as destructive. This server cannot download attachments. The v3 API has no download endpoint. The older v2 API documents `GET /documents/:id.json`, but in live tests it returned a 502 error from Sharesight for every existing document, so this server does not use it. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
 
 ### Read-only mode
 

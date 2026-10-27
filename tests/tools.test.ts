@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { startMockSharesight, type MockSharesight } from "./mock-sharesight.js";
+import { walkPages } from "./pages.js";
 import { inheritedEnv } from "./server-env.js";
 import { withServer as runServer, type Call } from "./stdio-session.js";
 
@@ -28,13 +29,7 @@ describe("holdings list tools", () => {
 
   /** Follows next_cursor from a first page to the end, returning every page. */
   async function walk(call: Call, tool: string, args: object): Promise<any[]> {
-    const pages = [(await call(tool, args)).payload];
-
-    for (let guard = 0; pages[pages.length - 1].pagination.next_cursor && guard < 50; guard++) {
-      pages.push((await call(tool, { cursor: pages[pages.length - 1].pagination.next_cursor })).payload);
-    }
-
-    return pages;
+    return walkPages((await call(tool, args)).payload, async (cursor) => (await call(tool, { cursor })).payload);
   }
 
   test("calls Sharesight with the client credentials and then a bearer token", async () => {

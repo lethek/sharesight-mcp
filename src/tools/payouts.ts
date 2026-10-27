@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
-import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult } from "./common.js";
+import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult, holdingId } from "./common.js";
 
 const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but this server cannot download the file itself.";
 
@@ -58,7 +58,7 @@ export function registerPayoutReadTools(server: McpServer, client: SharesightCli
       description: `Retrieves the payouts (dividends and interest) of a holding. ${ATTACHMENT_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
-        holding_id: z.number().describe("The holding ID"),
+        holding_id: holdingId,
         use_date: z.enum(["paid_on", "ex_date"]).optional().describe("Which payout date to filter on"),
       }),
     },
@@ -98,7 +98,7 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
       description: "Creates a payout (dividend or interest) on a holding, optionally with an attached file such as a statement. Give the details object that matches type.",
       annotations: CREATE,
       inputSchema: z.object({
-        holding_id: z.number().describe("The holding ID"),
+        holding_id: holdingId,
         type: z.enum(PAYOUT_TYPES).describe("The payout type"),
         paid_on: z.string().describe("Payout date YYYY-MM-DD"),
         reinvestment_trade: reinvestmentTrade.optional().describe("Details of the DRP trade when the payout is reinvested. Left out, the payout is not reinvested."),

@@ -22,12 +22,15 @@ sharesight-mcp/
 │   │   ├── common.ts         # formatResult, formatError and the annotation constants
 │   │   ├── attachments.ts    # Attachment inputs and withAttachment(): base64 or file path to Sharesight's attachment fields
 │   │   ├── portfolios.ts, holdings.ts, trades.ts, payouts.ts, custom-investments.ts, custom-investment-prices.ts,
-│   │   │   coupon-rates.ts, performance.ts, account.ts   # one area each, read tools and write tools
+│   │   │   coupon-rates.ts, adjustments.ts, labels.ts, performance.ts, reports.ts (v2 reports), confirmations.ts (v2 unconfirmed
+│   │   │   payouts and trades), account.ts   # one area each, read tools and write tools
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime
-│   ├── holdings-page.ts      # pageHoldings(): client-side filter and size-budgeted paging for the holdings list tools
-│   ├── holdings-list.ts      # HoldingsLister: snapshot ids, cursors, cache and paging for list_holdings / list_portfolio_holdings
+│   ├── paged-list.ts         # PagedLister<T>: generic fetch-once, filter, cache and size-budgeted paging with signed cursors; pageItems()
+│   ├── holdings-page.ts      # Holding filters and ordering
+│   ├── holdings-list.ts      # HoldingsLister: PagedLister for list_holdings / list_portfolio_holdings
+│   ├── unconfirmed-list.ts   # createUnconfirmedLister(): PagedLister for the v2 unconfirmed payout and trade lists
 │   ├── cursor.ts             # CursorCodec: signed, stateless paging cursors
 │   ├── cache.ts              # Cache interface and MemoryCache (TTL, entry cap)
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
@@ -58,10 +61,10 @@ sharesight-mcp/
 The main CLI entry point with one command:
 - `sharesight-mcp serve` - Run the MCP server over stdio (default)
 - `sharesight-mcp serve --http` - Run it over Streamable HTTP (also `MCP_TRANSPORT=http`)
-Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient` and `HoldingsLister`. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those two, which `runServe` builds once.
+Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient`, `HoldingsLister` and unconfirmed lister. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those, which `runServe` builds once. To page another list that Sharesight returns whole, give `PagedLister` a `matches` predicate (run on the fetched list before anything is cached) and an optional `compare`, as `unconfirmed-list.ts` does; keep the query that decides what to fetch in the `scope` string.
 
 ### `src/tools/`
-Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. Trade and payout create/update tools take a `PathPolicy` because `attachment_path` reads a file on the server's machine: with `MCP_DATA_ROOT` set, paths are relative to it and confined to it (symlinks resolved first), over both transports; without it, only stdio may read any path (`unrestricted`) and HTTP refuses. v3 has no attachment download endpoint (v2 has `GET /documents/:id.json`), and none is exposed yet. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.
+Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. Trade and payout create/update tools take a `PathPolicy` because `attachment_path` reads a file on the server's machine: with `MCP_DATA_ROOT` set, paths are relative to it and confined to it (symlinks resolved first), over both transports; without it, only stdio may read any path (`unrestricted`) and HTTP refuses. v3 has no attachment download endpoint. v2 documents `GET /documents/:id.json` (the id is the v3 attachment id), but in live tests (October 2026) it returned a Cloudflare 502 for every existing document and a normal 404 for a missing one, with the same token that reads v2 trades, so no download tool is exposed. The v1 Connect API has no document endpoint. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.
 
 ### `src/http.ts`
 Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `MCP_PORT`, `MCP_HOST` and `MCP_AUTH_TOKEN`; the generic `PORT` and `HOST` are deliberately not read. Stdio uses `serveStdio` so it also serves both protocol eras, and `serve` rejects unknown options before it contacts the token endpoint.
@@ -142,6 +145,9 @@ The git tag is the only place a release version is written. `package.json` holds
 - Dates: `YYYY-MM-DD` format
 - Pagination: cursor-based with `page` and `per_page`
 
+### Sharesight API v2
+A few tools use v2, because v3 lacks them: the capital gains, unrealised CGT, diversity and valuation reports, `my_user`, `user_instruments`, and the unconfirmed payout and trade lists with payout confirm and reject. The same OAuth token works. A client method reaches v2 by passing an endpoint that starts with `/api/v2/`. The v2 docs are at `https://portfolio.sharesight.com/api/2/doc/api_data.json`. Do not add a trade confirm or reject tool on `POST /api/v2/trades.json`: live tests showed it creates a new confirmed trade instead, even with `state: "rejected"`.
+
 ### Error Handling
 The client throws errors for non-2xx responses. The MCP handler catches these and returns `isError: true` responses.
 
@@ -153,7 +159,7 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 
 ## Testing
 
-`npm test` compiles `src/` and `tests/` together into `.test-build/` (`scripts/prepare-test-build.mjs` clears it first and copies `package.json` in, because `src/version.ts` reads it) and runs the suites with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). `tests/tools.test.ts` runs the server over stdio against `tests/mock-sharesight.ts`, a local HTTP stand-in for Sharesight reached through `SHARESIGHT_BASE_URL`, and covers the holdings list tools. Extend the mock when a test needs another endpoint. New tests go in `tests/`, named after the `src/` file they cover, and import from `../src/`. A test that spawns the server must build its environment from `inheritedEnv()`, so settings exported in a developer's shell cannot change the result. `tests/tool-groups.test.ts` covers the tool set, the annotations and read-only mode. The other tool handlers in `src/tools/` are not covered. Test those manually:
+`npm test` compiles `src/` and `tests/` together into `.test-build/` (`scripts/prepare-test-build.mjs` clears it first and copies `package.json` in, because `src/version.ts` reads it) and runs the suites with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). `tests/tools.test.ts` runs the server over stdio against `tests/mock-sharesight.ts`, a local HTTP stand-in for Sharesight reached through `SHARESIGHT_BASE_URL`, and covers the holdings list tools. Extend the mock when a test needs another endpoint by adding a route to the table in `routes()`; `lastBody`, `lastRequest` and `lastCall` read what it recorded, and `tests/pages.ts` has `walkPages()` for following `next_cursor`. New tests go in `tests/`, named after the `src/` file they cover, and import from `../src/`. A test that spawns the server must build its environment from `inheritedEnv()`, so settings exported in a developer's shell cannot change the result. `tests/tool-groups.test.ts` covers the tool set, the annotations and read-only mode. The other tool handlers in `src/tools/` are not covered. Test those manually:
 
 1. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
 2. Run `node dist/index.js serve`

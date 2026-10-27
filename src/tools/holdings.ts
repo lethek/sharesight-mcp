@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { MAX_SEARCH_LENGTH, type HoldingsLister } from "../holdings-list.js";
-import { DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
+import { DELETE, READ_ONLY, UPDATE, consolidated, formatError, formatResult, holdingId, portfolioId } from "./common.js";
 
 const MAX_LIMIT = 200;
 
@@ -44,8 +44,8 @@ export function registerHoldingReadTools(server: McpServer, client: SharesightCl
       description: `Retrieves the holdings for a specific portfolio. ${HOLDINGS_PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("True if a consolidated view is requested"),
+        portfolio_id: portfolioId,
+        consolidated,
         ...holdingListOptions,
       }),
     },
@@ -68,7 +68,7 @@ export function registerHoldingReadTools(server: McpServer, client: SharesightCl
       description: "Retrieves details of a specific holding",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        holding_id: z.number().describe("The holding ID"),
+        holding_id: holdingId,
         average_purchase_price: z.boolean().optional().describe("Include average purchase price in response"),
         cost_base: z.boolean().optional().describe("Include cost base in response"),
         values_over_time: z.string().optional().describe("Set to 'true' for values from inception, or a date (YYYY-MM-DD) for start date"),
@@ -97,7 +97,7 @@ export function registerHoldingWriteTools(server: McpServer, client: SharesightC
       description: "Updates a holding (currently supports DRP settings)",
       annotations: UPDATE,
       inputSchema: z.object({
-        holding_id: z.number().describe("The holding ID"),
+        holding_id: holdingId,
         enable_drp: z.boolean().optional().describe("Set to true to enable DRP, false to disable"),
         drp_mode_setting: z.string().optional().describe("DRP mode: up, down, half, or down_track"),
       }),

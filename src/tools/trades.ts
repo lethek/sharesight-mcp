@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
-import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult } from "./common.js";
+import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult, holdingId, portfolioId } from "./common.js";
 
 const ATTACHMENT_HELP = "Trades list their attachments (id, file name, size, type) but this server cannot download the file itself.";
 
@@ -42,7 +42,7 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
       description: `Retrieves the trades in a portfolio. ${ATTACHMENT_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
+        portfolio_id: portfolioId,
         start_date: z.string().optional().describe("Trades from this date YYYY-MM-DD (defaults to portfolio inception)"),
         end_date: z.string().optional().describe("Trades until this date YYYY-MM-DD (defaults to today)"),
         unique_identifier: z.string().optional().describe("Only the trade with this unique identifier"),
@@ -63,7 +63,7 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
       description: `Retrieves the trades of a holding. ${ATTACHMENT_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
-        holding_id: z.number().describe("The holding ID"),
+        holding_id: holdingId,
         unique_identifier: z.string().optional().describe("Only the trade with this unique identifier"),
       }),
     },

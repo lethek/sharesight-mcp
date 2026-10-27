@@ -1,7 +1,7 @@
 /**
  * Sharesight API v3 Client
  *
- * This module provides a TypeScript client for interacting with the Sharesight API v3.
+ * This module provides a TypeScript client for interacting with the Sharesight API v3, and the few v2 endpoints that v3 lacks.
  * It handles authentication, request formatting, and response parsing.
  *
  * @see https://api.sharesight.com/doc/api/v3
@@ -33,6 +33,11 @@ import {
 } from "./types.js";
 import { DEFAULT_BASE_URL, OAuthManager } from "./oauth.js";
 
+/** What a call returns when Sharesight answers 204 with no body */
+export interface NoContent {
+  status: 204;
+}
+
 const REQUEST_TIMEOUT_MS = 30000;
 const REPORT_REQUEST_TIMEOUT_MS = 180000; // performance reports can be slow on large portfolios
 const UPLOAD_REQUEST_TIMEOUT_MS = 180000; // a trade or payout with an attachment sends a large body
@@ -58,6 +63,8 @@ export class SharesightClient {
   private oauth: OAuthManager;
   /** Base URL for all Sharesight API v3 endpoints */
   private apiBaseUrl: string;
+  /** The host the API versions share, for the endpoints that are only in v2 */
+  private origin: string;
 
   /**
    * Creates a new SharesightClient instance.
@@ -67,7 +74,8 @@ export class SharesightClient {
    */
   constructor(oauth: OAuthManager, baseUrl: string = DEFAULT_BASE_URL) {
     this.oauth = oauth;
-    this.apiBaseUrl = `${baseUrl.replace(/\/+$/, "")}/api/v3`;
+    this.origin = baseUrl.replace(/\/+$/, "");
+    this.apiBaseUrl = `${this.origin}/api/v3`;
   }
 
   private async getAccessToken(): Promise<string> {
@@ -95,7 +103,8 @@ export class SharesightClient {
     queryParams?: Record<string, string | number | boolean | undefined>,
     timeoutMs: number = REQUEST_TIMEOUT_MS
   ): Promise<T> {
-    const url = new URL(`${this.apiBaseUrl}${endpoint}`);
+    // An endpoint that starts with /api/ names its own version, like /api/v2/my_user.json
+    const url = new URL(endpoint.startsWith("/api/") ? `${this.origin}${endpoint}` : `${this.apiBaseUrl}${endpoint}`);
 
     const rethrowTimeout = (error: unknown): never => {
       if (error instanceof Error && error.name === "TimeoutError") {
@@ -167,6 +176,11 @@ export class SharesightClient {
       throw new Error(
         `Sharesight API error (${response.status}): ${errorData.reason || errorData.error || errorText}`
       );
+    }
+
+    // Some deletes answer 204 with no body, so callers of those endpoints are typed as NoContent
+    if (response.status === 204) {
+      return { status: 204 } as T;
     }
 
     return response.json().catch(rethrowTimeout) as Promise<T>;
@@ -857,5 +871,101 @@ export class SharesightClient {
 
   async deletePayout(id: number): Promise<BaseResponse> {
     return this.request<BaseResponse>("DELETE", `/payouts/${id}`);
+  }
+
+  /** Lists the adjustments (dividends) of an ordinary custom investment. */
+  async listAdjustments(instrumentId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/custom_investments/${instrumentId}/adjustments`, undefined, options);
+  }
+
+  async getAdjustment(id: number): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/adjustments/${id}`);
+  }
+
+  /** Creates an adjustment. Sharesight wants the fields under an `adjustment` key and otherwise reports a missing currency. */
+  async createAdjustment(instrumentId: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/custom_investments/${instrumentId}/adjustments`, { adjustment: data });
+  }
+
+  async updateAdjustment(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/adjustments/${id}`, { adjustment: data });
+  }
+
+  async deleteAdjustment(id: number): Promise<BaseResponse> {
+    return this.request<BaseResponse>("DELETE", `/adjustments/${id}`);
+  }
+
+  /** Lists the labels of a portfolio. */
+  async listLabels(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/labels`, undefined, options);
+  }
+
+  async getLabel(portfolioId: number, label: string, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, undefined, options);
+  }
+
+  /** Creates a label and attaches it to the holdings. */
+  async createLabel(portfolioId: number, data: object, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/portfolios/${portfolioId}/labels`, data, options);
+  }
+
+  /** Attaches a label to more holdings, creating the label if it does not exist. */
+  async updateLabel(portfolioId: number, label: string, data: object, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, data, options);
+  }
+
+  async deleteLabel(portfolioId: number, label: string, options?: QueryParams): Promise<NoContent> {
+    return this.request<NoContent>("DELETE", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, undefined, options);
+  }
+
+  /** Detaches a label from one holding. */
+  async deleteHoldingLabel(holdingId: number, label: string): Promise<NoContent> {
+    return this.request<NoContent>("DELETE", `/holdings/${holdingId}/labels/${encodeURIComponent(label)}`);
+  }
+
+  // ==========================================================================
+  // v2 endpoints, for what v3 does not offer
+  // ==========================================================================
+
+  /** One of the v2 reports: capital_gains, diversity, unrealised_cgt or valuation. */
+  async getReportV2(portfolioId: number, report: "capital_gains" | "diversity" | "unrealised_cgt" | "valuation", options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/portfolios/${portfolioId}/${report}.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  async getMyUser(): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", "/api/v2/my_user.json");
+  }
+
+  async listUserInstruments(): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", "/api/v2/user_instruments.json");
+  }
+
+  /** Lists the payouts of a portfolio, confirmed and unconfirmed. v2 is the only version that shows the unconfirmed ones. */
+  async listPortfolioPayoutsV2(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/portfolios/${portfolioId}/payouts.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Lists the trades of a portfolio, confirmed and unconfirmed. */
+  async listPortfolioTradesV2(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/portfolios/${portfolioId}/trades.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  async listRejectedTradesV2(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/rejected_trades.json`, undefined, options);
+  }
+
+  /** Lists the trades of a holding, confirmed and unconfirmed. */
+  async listHoldingTradesV2(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/trades.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Lists the payouts of a holding, confirmed and unconfirmed. */
+  async listHoldingPayoutsV2(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/payouts.json`, undefined, options);
+  }
+
+  /** Confirms or rejects an unconfirmed payout, which the v2 API does with a POST of a new state. */
+  async setPayoutStateV2(data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", "/api/v2/payouts.json", { payout: data });
   }
 }

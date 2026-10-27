@@ -2,7 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MemoryCache, type Cache } from "../src/cache.js";
 import { CursorCodec } from "../src/cursor.js";
-import { HoldingsLister, MAX_SEARCH_LENGTH, PAGINATION_RESERVE_CHARS, isCursorState, type CursorState } from "../src/holdings-list.js";
+import { HoldingsLister, MAX_SEARCH_LENGTH, isCursorState, type CursorState, type HoldingsSnapshot } from "../src/holdings-list.js";
+import { PAGINATION_RESERVE_CHARS } from "../src/paged-list.js";
 import type { Holding, HoldingsResponse } from "../src/types.js";
 
 function holding(id: number): Holding {
@@ -22,11 +23,11 @@ const IDS = Array.from({ length: 100 }, (_, i) => i + 1);
 const MAX_CHARS = 6_000;
 
 /** Wraps a cache so a test can see what was stored and looked up. */
-class SpyCache implements Cache<HoldingsResponse> {
+class SpyCache implements Cache<HoldingsSnapshot> {
   readonly sets: string[] = [];
   readonly gets: string[] = [];
 
-  constructor(private readonly inner: Cache<HoldingsResponse>) {}
+  constructor(private readonly inner: Cache<HoldingsSnapshot>) {}
 
   get(key: string) {
     this.gets.push(key);
@@ -34,13 +35,13 @@ class SpyCache implements Cache<HoldingsResponse> {
     return this.inner.get(key);
   }
 
-  set(key: string, value: HoldingsResponse) {
+  set(key: string, value: HoldingsSnapshot) {
     this.sets.push(key);
     this.inner.set(key, value);
   }
 }
 
-function lister(cache: Cache<HoldingsResponse> = new MemoryCache(60_000, 20)) {
+function lister(cache: Cache<HoldingsSnapshot> = new MemoryCache(60_000, 20)) {
   return new HoldingsLister({ cache, cursors: new CursorCodec<CursorState>("secret"), maxResponseChars: MAX_CHARS });
 }
 
