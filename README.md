@@ -15,6 +15,8 @@ You'll need a **Client ID** and **Client Secret** from Sharesight to use this se
 
 ### Step 2: Add MCP Server Configuration
 
+This requires Node.js 24 or later.
+
 Add to your Claude Desktop config file:
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -25,7 +27,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "sharesight": {
       "command": "npx",
-      "args": ["-y", "github:Haizzz/sharesight-mcp", "serve"],
+      "args": ["-y", "github:lethek/sharesight-mcp", "serve"],
       "env": {
         "SHARESIGHT_CLIENT_ID": "your_client_id",
         "SHARESIGHT_CLIENT_SECRET": "your_client_secret"
@@ -112,7 +114,7 @@ This server exposes **28 tools** covering all Sharesight v3 API endpoints:
 ## Install from Source
 
 ```bash
-git clone https://github.com/Haizzz/sharesight-mcp.git
+git clone https://github.com/lethek/sharesight-mcp.git
 cd sharesight-mcp
 npm install
 npm run build
@@ -152,13 +154,13 @@ The endpoint is `/mcp`, and `/healthz` returns `ok` without authentication, for 
 
 The endpoint acts as your single Sharesight account, so anyone who can call it can read and change your portfolio. `MCP_AUTH_TOKEN` is required when `MCP_HOST` is not a loopback address, and the server will not start without it. Without a token on loopback, requests with a non-local `Host` or `Origin` header are rejected. The server speaks plain HTTP, so put it behind a TLS-terminating proxy before exposing it beyond your machine.
 
+Clients send the token as `Authorization: Bearer <token>`.
+
 The server is stateless. Each request gets a fresh server instance and there are no sessions, so it works behind a round-robin load balancer. It serves both the 2026-07-28 protocol and 2025-era clients, over stdio as well as HTTP.
 
 Responses are streamed with a keepalive every 15 seconds, so long calls such as the performance reports (up to 180 seconds) are not cut by a proxy's idle timeout. A proxy's total request timeout should still be above 180 seconds.
 
 On SIGINT or SIGTERM the server stops accepting connections and gives in-flight requests 8 seconds to finish before cutting them.
-
-Clients send the token as `Authorization: Bearer <token>`.
 
 ## Token Handling
 
@@ -167,8 +169,8 @@ Access tokens are held in memory only. The server requests a new one when the cu
 ## Error Handling
 
 Common errors:
-- **401** - Invalid or expired access token
-- **403** - Token revoked or insufficient permissions
+- **401** - Credentials rejected, or the API still refused a fresh token after one automatic retry
+- **403** - The API application lacks permission for the request
 - **404** - Resource not found
 - **422** - Validation error (check field values)
 
