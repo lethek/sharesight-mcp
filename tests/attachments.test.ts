@@ -197,7 +197,7 @@ describe("attachments through the tools", () => {
         assert.deepEqual(lastBody(mock), {
           method: "POST",
           path: "/api/v3/holdings/4/payouts",
-          body: { payout: { type: "au_local_dividend", paid_on: "2024-03-01", au_local_dividend: { trust: false, franked_amount: 10 }, attachment: BASE64, attachment_filename: "statement.pdf" } },
+          body: { payout: { type: "au_local_dividend", paid_on: "2024-03-01", au_local_dividend: { trust: false, franked_amount: 10 }, reinvestment_trade: { reinvested: false, quantity: 0 }, attachment: BASE64, attachment_filename: "statement.pdf" } },
         });
       });
     } finally {
@@ -235,6 +235,19 @@ describe("attachments through the tools", () => {
       const result = await call("list_trades", { portfolio_id: 7, start_date: "2024-01-01" });
 
       assert.equal(result.payload.query, "?start_date=2024-01-01");
+    });
+  });
+
+  test("update_payout needs reinvestment_trade but not paid_on", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const missing = await call("update_payout", { payout_id: 9, comments: "x" });
+
+      assert.equal(missing.isError, true);
+
+      const result = await call("update_payout", { payout_id: 9, comments: "x", reinvestment_trade: { reinvested: false, quantity: 0 } });
+
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(lastBody(mock), { method: "PUT", path: "/api/v3/payouts/9", body: { payout: { comments: "x", reinvestment_trade: { reinvested: false, quantity: 0 } } } });
     });
   });
 
