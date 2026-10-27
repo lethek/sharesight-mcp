@@ -25,6 +25,7 @@ import { VERSION } from "./version.js";
 import { MemoryCache } from "./cache.js";
 import { CursorCodec } from "./cursor.js";
 import { HoldingsLister } from "./holdings-list.js";
+import { createUnconfirmedLister } from "./unconfirmed-list.js";
 import { DEFAULT_MAX_ATTACHMENT_BYTES } from "./tools/attachments.js";
 import { registerTools } from "./tools/index.js";
 
@@ -213,6 +214,11 @@ async function runServe(): Promise<void> {
     cursors: new CursorCodec(listing.cursorSecret),
     maxResponseChars: listing.maxResponseChars,
   });
+  const unconfirmed = createUnconfirmedLister({
+    cache: new MemoryCache(listing.cacheTtlSeconds * 1000, MAX_CACHED_LISTS),
+    cursors: new CursorCodec(listing.cursorSecret),
+    maxResponseChars: listing.maxResponseChars,
+  });
 
   const createServer = (): McpServer => {
     const server = new McpServer({
@@ -220,7 +226,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client, { holdings, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
+    registerTools(server, client, { holdings, unconfirmed, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
 
     return server;
   };

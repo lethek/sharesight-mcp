@@ -27,8 +27,10 @@ sharesight-mcp/
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime
-│   ├── holdings-page.ts      # pageHoldings(): client-side filter and size-budgeted paging for the holdings list tools
-│   ├── holdings-list.ts      # HoldingsLister: snapshot ids, cursors, cache and paging for list_holdings / list_portfolio_holdings
+│   ├── paged-list.ts         # PagedLister<T>: generic fetch-once, filter, cache and size-budgeted paging with signed cursors; pageItems()
+│   ├── holdings-page.ts      # Holding filters and ordering, and pageHoldings()
+│   ├── holdings-list.ts      # HoldingsLister: PagedLister for list_holdings / list_portfolio_holdings
+│   ├── unconfirmed-list.ts   # createUnconfirmedLister(): PagedLister for the v2 unconfirmed payout and trade lists
 │   ├── cursor.ts             # CursorCodec: signed, stateless paging cursors
 │   ├── cache.ts              # Cache interface and MemoryCache (TTL, entry cap)
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
@@ -59,7 +61,7 @@ sharesight-mcp/
 The main CLI entry point with one command:
 - `sharesight-mcp serve` - Run the MCP server over stdio (default)
 - `sharesight-mcp serve --http` - Run it over Streamable HTTP (also `MCP_TRANSPORT=http`)
-Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient` and `HoldingsLister`. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those two, which `runServe` builds once.
+Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient`, `HoldingsLister` and unconfirmed lister. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those, which `runServe` builds once. To page another list that Sharesight returns whole, give `PagedLister` a `matches` predicate (run on the fetched list before anything is cached) and an optional `compare`, as `unconfirmed-list.ts` does; keep the query that decides what to fetch in the `scope` string.
 
 ### `src/tools/`
 Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. Trade and payout create/update tools take a `PathPolicy` because `attachment_path` reads a file on the server's machine: with `MCP_DATA_ROOT` set, paths are relative to it and confined to it (symlinks resolved first), over both transports; without it, only stdio may read any path (`unrestricted`) and HTTP refuses. v3 has no attachment download endpoint. v2 documents `GET /documents/:id.json` (the id is the v3 attachment id), but in live tests (October 2026) it returned a Cloudflare 502 for every existing document and a normal 404 for a missing one, with the same token that reads v2 trades, so no download tool is exposed. The v1 Connect API has no document endpoint. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.

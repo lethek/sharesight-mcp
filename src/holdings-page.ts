@@ -1,4 +1,7 @@
+import { pageItems, serializedSize } from "./paged-list.js";
 import type { Holding } from "./types.js";
+
+export { serializedSize };
 
 export interface HoldingFilters {
   /** Case-insensitive text that must appear in the instrument code or name */
@@ -27,7 +30,7 @@ export interface HoldingPage {
   nextOffset: number | null;
 }
 
-function matches(holding: Holding, { search, market_code, portfolio_id, valid_position }: HoldingFilters): boolean {
+export function matchesHolding(holding: Holding, { search, market_code, portfolio_id, valid_position }: HoldingFilters): boolean {
   const text = search?.trim().toLowerCase();
 
   if (text && !holding.instrument.code.toLowerCase().includes(text) && !holding.instrument.name.toLowerCase().includes(text)) {
@@ -45,38 +48,17 @@ function matches(holding: Holding, { search, market_code, portfolio_id, valid_po
   return valid_position === undefined || holding.valid_position === valid_position;
 }
 
-/** Characters one holding takes inside the response, which is printed with 2-space indentation and the array two levels deep. */
-export function serializedSize(holding: Holding): number {
-  const text = JSON.stringify(holding, null, 2);
-  const lines = text.split("\n").length;
-
-  return text.length + lines * 4 + 2;
-}
+/** Orders holdings by id, so that page boundaries stay put. */
+export const compareHoldings = (a: Holding, b: Holding): number => a.id - b.id;
 
 /**
  * Filters holdings and returns the next page of them, filling the page until the character budget is used.
  *
- * Page sizes vary with how big each holding is, so callers continue from `nextOffset` and never work out an offset themselves.
- * A page always holds at least one holding, so one oversized holding cannot stop a walk. The Sharesight API has no filter or
- * paging parameters for holdings, so this runs on the full list, ordered by holding id so that page boundaries stay put.
+ * The Sharesight API has no filter or paging parameters for holdings, so this runs on the full list, ordered by holding id.
  */
 export function pageHoldings(holdings: Holding[], { filters = {}, offset = 0, limit = Infinity, budgetChars }: HoldingPageOptions): HoldingPage {
-  const matched = holdings.filter((holding) => matches(holding, filters)).sort((a, b) => a.id - b.id);
-  const page: Holding[] = [];
-  let used = 0;
+  const matched = holdings.filter((holding) => matchesHolding(holding, filters)).sort(compareHoldings);
+  const page = pageItems(matched, { offset, limit, budgetChars });
 
-  for (let i = offset; i < matched.length && page.length < limit; i++) {
-    const size = serializedSize(matched[i]);
-
-    if (page.length > 0 && used + size > budgetChars) {
-      break;
-    }
-
-    page.push(matched[i]);
-    used += size;
-  }
-
-  const end = offset + page.length;
-
-  return { holdings: page, total: matched.length, nextOffset: end < matched.length ? end : null };
+  return { holdings: page.items, total: matched.length, nextOffset: page.nextOffset };
 }

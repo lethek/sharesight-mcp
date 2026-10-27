@@ -124,6 +124,18 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
     }
 
     if (req.method === "GET" && /^\/api\/v2\/portfolios\/\d+\/payouts\.json$/.test(path)) {
+      // Portfolio 99 has 60 unconfirmed payouts among confirmed ones, sent newest first, enough to need several pages
+      if (path.includes("/portfolios/99/")) {
+        const payouts = Array.from({ length: 120 }, (_, i) =>
+          i % 2 === 0
+            ? { id: i, state: "confirmed", paid_on: "2024-01-01", comments: "c".repeat(150) }
+            : { id: null, state: "unconfirmed", holding_id: 1, company_event_id: 1000 + i, paid_on: `2025-01-${String(120 - i).padStart(3, "0")}`, comments: "u".repeat(150) }
+        );
+
+        send(res, 200, { payouts, links: { self: "mock" } });
+        return;
+      }
+
       send(res, 200, { payouts: [{ id: 1, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 77 }] });
       return;
     }

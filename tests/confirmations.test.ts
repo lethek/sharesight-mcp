@@ -13,7 +13,7 @@ describe("unconfirmed payouts and trades", () => {
       const result = await call("list_unconfirmed_payouts", { portfolio_id: 7 });
 
       assert.equal(result.isError, false, result.text);
-      assert.equal(result.payload.count, 1);
+      assert.equal(result.payload.pagination.total, 1);
       assert.deepEqual(result.payload.unconfirmed_payouts, [{ id: null, state: "unconfirmed", company_event_id: 77 }]);
       assert.deepEqual(result.payload.searched, { start_date: "2000-01-01", end_date: "2100-12-31" });
     });
@@ -23,8 +23,43 @@ describe("unconfirmed payouts and trades", () => {
     await withServer([], {}, async (call) => {
       const result = await call("list_unconfirmed_trades", { portfolio_id: 7, start_date: "2025-01-01" });
 
-      assert.equal(result.payload.count, 2);
+      assert.equal(result.payload.pagination.total, 2);
       assert.deepEqual(result.payload.searched, { start_date: "2025-01-01", end_date: "2100-12-31" });
+    });
+  });
+
+  test("a long unconfirmed list comes in pages from one fetch, oldest first, and the cursor only fits its own query", async () => {
+    await withServer([], { MCP_MAX_RESPONSE_CHARS: "5000" }, async (call, mock) => {
+      const fetches = () => mock.requests.filter((r) => r.path === "/api/v2/portfolios/99/payouts.json").length;
+      const seen: number[] = [];
+      let page = await call("list_unconfirmed_payouts", { portfolio_id: 99 });
+      let pages = 1;
+
+      assert.equal(page.payload.pagination.total, 60);
+      assert.equal(page.payload.pagination.has_more, true);
+
+      for (;;) {
+        seen.push(...page.payload.unconfirmed_payouts.map((p: { company_event_id: number }) => p.company_event_id));
+
+        if (!page.payload.pagination.has_more) {
+          break;
+        }
+
+        page = await call("list_unconfirmed_payouts", { portfolio_id: 99, cursor: page.payload.pagination.next_cursor });
+        pages++;
+      }
+
+      assert.ok(pages > 1);
+      assert.equal(fetches(), 1, "later pages come from the cached list");
+      assert.equal(seen.length, 60);
+      assert.equal(new Set(seen).size, 60);
+      assert.deepEqual(seen, [...seen].sort((a, b) => b - a), "oldest first means highest event number first in this data");
+
+      const first = await call("list_unconfirmed_payouts", { portfolio_id: 99 });
+      const other = await call("list_unconfirmed_payouts", { portfolio_id: 99, start_date: "2025-01-01", cursor: first.payload.pagination.next_cursor });
+
+      assert.equal(other.isError, true);
+      assert.match(other.text, /different query/);
     });
   });
 

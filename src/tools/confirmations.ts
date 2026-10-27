@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
+import type { UnconfirmedItem, UnconfirmedLister } from "../unconfirmed-list.js";
 import { DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
 
 /**
@@ -26,7 +27,7 @@ const rangeInput = {
   end_date: z.string().optional().describe(`End date YYYY-MM-DD (default ${LATEST})`),
 };
 
-type Item = { state?: string; company_event_id?: number | null; paid_on?: string; quantity?: number; price?: number };
+type Item = UnconfirmedItem;
 
 /** Exactly one of company_event_id and paid_on must name the payout. */
 function identify(companyEventId: number | undefined, paidOn: string | undefined): string | undefined {
@@ -43,47 +44,58 @@ function identify(companyEventId: number | undefined, paidOn: string | undefined
 
 const fail = (message: string) => formatError(new Error(message));
 
-export function registerConfirmationReadTools(server: McpServer, client: SharesightClient) {
-  server.registerTool(
-    "list_unconfirmed_payouts",
-    {
-      description:
-        "Lists the payouts in a portfolio that are waiting to be confirmed or rejected (v2 API). Dividend payouts have a company_event_id. Interest payouts have none and are named by paid_on.",
-      annotations: READ_ONLY,
-      inputSchema: z.object(rangeInput),
-    },
-    async ({ portfolio_id, start_date, end_date }) => {
-      try {
-        const searched = { start_date: start_date ?? EARLIEST, end_date: end_date ?? LATEST };
-        const result = await client.listPortfolioPayoutsV2(portfolio_id, searched);
-        const payouts = ((result.payouts as Item[] | undefined) ?? []).filter((payout) => payout.state === "unconfirmed");
+const PAGING_HELP =
+  "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself. Later pages come from the list the first page found, so confirming or rejecting items between pages does not move the pages.";
 
-        return formatResult({ unconfirmed_payouts: payouts, count: payouts.length, searched });
-      } catch (error) {
-        return formatError(error);
+const pagingInput = {
+  limit: z.number().int().min(1).max(200).optional().describe("Most items to return in one page (maximum 200). A page is also cut short when it fills the response size limit."),
+  cursor: z.string().nullish().describe("The pagination.next_cursor from the previous page, to get the next page. Leave out for the first page."),
+};
+
+export function registerConfirmationReadTools(server: McpServer, client: SharesightClient, unconfirmed: UnconfirmedLister) {
+  /** Both lists work the same way: fetch the portfolio's whole v2 list, keep the unconfirmed items, and page them. */
+  function registerUnconfirmedList(name: string, key: string, description: string, fetch: (portfolioId: number, range: { start_date: string; end_date: string }) => Promise<Record<string, unknown>>, field: string) {
+    server.registerTool(
+      name,
+      {
+        description: `${description} ${PAGING_HELP}`,
+        annotations: READ_ONLY,
+        inputSchema: z.object({ ...rangeInput, ...pagingInput }),
+      },
+      async ({ portfolio_id, start_date, end_date, limit, cursor }) => {
+        try {
+          const searched = { start_date: start_date ?? EARLIEST, end_date: end_date ?? LATEST };
+          // The portfolio and dates are part of the scope, so a cursor only continues the query it came from
+          const scope = `${name}:${portfolio_id}:${searched.start_date}:${searched.end_date}`;
+          const { items, pagination } = await unconfirmed.list(
+            scope,
+            async () => ({ items: ((await fetch(portfolio_id, searched))[field] as UnconfirmedItem[] | undefined) ?? [], envelope: {} }),
+            {},
+            { cursor, limit }
+          );
+
+          return formatResult({ [key]: items, searched, pagination });
+        } catch (error) {
+          return formatError(error);
+        }
       }
-    }
+    );
+  }
+
+  registerUnconfirmedList(
+    "list_unconfirmed_payouts",
+    "unconfirmed_payouts",
+    "Lists the payouts in a portfolio that are waiting to be confirmed or rejected (v2 API). Dividend payouts have a company_event_id. Interest payouts have none and are named by paid_on.",
+    (portfolioId, range) => client.listPortfolioPayoutsV2(portfolioId, range),
+    "payouts"
   );
 
-  server.registerTool(
+  registerUnconfirmedList(
     "list_unconfirmed_trades",
-    {
-      description:
-        "Lists the trades in a portfolio that are waiting to be confirmed (v2 API). A dividend reinvestment trade is settled by confirming or rejecting its payout with confirm_payout or reject_payout, matched by company_event_id. This server cannot confirm or reject other trades.",
-      annotations: READ_ONLY,
-      inputSchema: z.object(rangeInput),
-    },
-    async ({ portfolio_id, start_date, end_date }) => {
-      try {
-        const searched = { start_date: start_date ?? EARLIEST, end_date: end_date ?? LATEST };
-        const result = await client.listPortfolioTradesV2(portfolio_id, searched);
-        const trades = ((result.trades as Item[] | undefined) ?? []).filter((trade) => trade.state === "unconfirmed");
-
-        return formatResult({ unconfirmed_trades: trades, count: trades.length, searched });
-      } catch (error) {
-        return formatError(error);
-      }
-    }
+    "unconfirmed_trades",
+    "Lists the trades in a portfolio that are waiting to be confirmed (v2 API). A dividend reinvestment trade is settled by confirming or rejecting its payout with confirm_payout or reject_payout, matched by company_event_id. This server cannot confirm or reject other trades.",
+    (portfolioId, range) => client.listPortfolioTradesV2(portfolioId, range),
+    "trades"
   );
 
   server.registerTool(
