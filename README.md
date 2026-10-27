@@ -160,7 +160,7 @@ Sharesight creates payouts and trades from company events and leaves them unconf
 | `confirm_payout` | Write | Confirm a payout, optionally as a reinvestment (DRP) |
 | `reject_payout` | Write | Reject a payout so it no longer appears in the portfolio |
 
-Confirming or rejecting a payout also settles its dividend reinvestment trade. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Confirming an interest payout by `paid_on` has not been tested against the live API.
+Confirming or rejecting a payout also settles its dividend reinvestment trade. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Interest payouts, which have no `company_event_id`, are confirmed by `paid_on`.
 
 ### Performance and portfolio reports
 | Tool | Kind | Description |
