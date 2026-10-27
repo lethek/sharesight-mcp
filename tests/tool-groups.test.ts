@@ -33,6 +33,14 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_coupon_rates"],
     write: ["create_coupon_rate", "update_coupon_rate", "delete_coupon_rate"],
   },
+  adjustments: {
+    read: ["list_adjustments", "get_adjustment"],
+    write: ["create_adjustment", "update_adjustment", "delete_adjustment"],
+  },
+  labels: {
+    read: ["list_labels", "get_label"],
+    write: ["create_label", "update_label", "delete_label", "delete_holding_label"],
+  },
   "performance and portfolio reports": {
     read: [
       "get_performance_report",
@@ -68,7 +76,7 @@ describe("tool groups", () => {
   test("the server offers exactly the grouped tools", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       assert.deepEqual(names(await listTools(request)), [...READS, ...WRITES].sort());
-      assert.equal(READS.length + WRITES.length, 43);
+      assert.equal(READS.length + WRITES.length, 54);
     });
   });
 

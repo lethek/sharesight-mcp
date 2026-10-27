@@ -63,7 +63,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **43 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: labels, file imports, connections, the watchlist, adjustments, bulk prices, and the lookups other than countries. Each area lists its read tools first, then its write tools.
+This server exposes **54 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, unconfirmed payouts and trades, and the lookups other than countries. Each area lists its read tools first, then its write tools.
 
 Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
@@ -128,6 +128,27 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | `update_coupon_rate` | Write | Modify a coupon rate |
 | `delete_coupon_rate` | Write | Remove a coupon rate |
 
+### Adjustments (custom investment dividends)
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_adjustments` | Read | List the dividends of an ordinary custom investment |
+| `get_adjustment` | Read | Get one adjustment |
+| `create_adjustment` | Write | Add a dividend, with optional DRP and franking |
+| `update_adjustment` | Write | Change an adjustment; only the fields sent change |
+| `delete_adjustment` | Write | Remove an adjustment |
+
+### Labels
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_labels` | Read | List a portfolio's labels and the holdings they are on |
+| `get_label` | Read | Get a label by name |
+| `create_label` | Write | Create a label and attach it to holdings |
+| `update_label` | Write | Attach a label to more holdings, creating it if missing |
+| `delete_label` | Write | Remove a label from the portfolio and all holdings |
+| `delete_holding_label` | Write | Detach a label from one holding |
+
+Label names allow only letters, digits, spaces and underscores. Detaching the last holding removes the label.
+
 ### Performance and portfolio reports
 | Tool | Kind | Description |
 |------|------|-------------|
@@ -165,7 +186,7 @@ Sharesight lets a trade or payout carry one attached file, such as a contract no
 
 An attachment may be at most `MCP_MAX_ATTACHMENT_BYTES` (10 MiB by default), measured on the file itself and checked before a file is read. Sharesight documents no limit of its own. A path must also be a regular file. The directory must exist when the server starts. Anyone who can call the server can attach any file inside the root to a trade or payout, so keep the root to files you are happy to upload.
 
-A new attachment replaces the existing one, and this server cannot read back a replaced or removed attachment. For that reason `update_trade` and `update_payout` are annotated as destructive. This server cannot download attachments. The v3 API has no download endpoint, and the older v2 API has `GET /documents/:id.json`, which this server does not use. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
+A new attachment replaces the existing one, and this server cannot read back a replaced or removed attachment. For that reason `update_trade` and `update_payout` are annotated as destructive. This server cannot download attachments. The v3 API has no download endpoint. The older v2 API documents `GET /documents/:id.json`, but in live tests it returned a 502 error from Sharesight for every existing document, so this server does not use it. The trade and payout read tools list each attachment's id, file name, size and type, and nothing more.
 
 ### Read-only mode
 

@@ -169,6 +169,11 @@ export class SharesightClient {
       );
     }
 
+    // Some deletes answer 204 with no body
+    if (response.status === 204) {
+      return {} as T;
+    }
+
     return response.json().catch(rethrowTimeout) as Promise<T>;
   }
 
@@ -857,5 +862,55 @@ export class SharesightClient {
 
   async deletePayout(id: number): Promise<BaseResponse> {
     return this.request<BaseResponse>("DELETE", `/payouts/${id}`);
+  }
+
+  /** Lists the adjustments (dividends) of an ordinary custom investment. */
+  async listAdjustments(instrumentId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/custom_investments/${instrumentId}/adjustments`, undefined, options);
+  }
+
+  async getAdjustment(id: number): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/adjustments/${id}`);
+  }
+
+  /** Creates an adjustment. Sharesight wants the fields under an `adjustment` key and otherwise reports a missing currency. */
+  async createAdjustment(instrumentId: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/custom_investments/${instrumentId}/adjustments`, { adjustment: data });
+  }
+
+  async updateAdjustment(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/adjustments/${id}`, { adjustment: data });
+  }
+
+  async deleteAdjustment(id: number): Promise<BaseResponse> {
+    return this.request<BaseResponse>("DELETE", `/adjustments/${id}`);
+  }
+
+  /** Lists the labels of a portfolio. */
+  async listLabels(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/labels`, undefined, options);
+  }
+
+  async getLabel(portfolioId: number, label: string, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, undefined, options);
+  }
+
+  /** Creates a label and attaches it to the holdings. */
+  async createLabel(portfolioId: number, data: object, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/portfolios/${portfolioId}/labels`, data, options);
+  }
+
+  /** Attaches a label to more holdings, creating the label if it does not exist. */
+  async updateLabel(portfolioId: number, label: string, data: object, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, data, options);
+  }
+
+  async deleteLabel(portfolioId: number, label: string, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("DELETE", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, undefined, options);
+  }
+
+  /** Detaches a label from one holding. */
+  async deleteHoldingLabel(holdingId: number, label: string): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("DELETE", `/holdings/${holdingId}/labels/${encodeURIComponent(label)}`);
   }
 }

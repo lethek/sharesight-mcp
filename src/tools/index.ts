@@ -3,10 +3,12 @@ import type { HoldingsLister } from "../holdings-list.js";
 import type { SharesightClient } from "../sharesight-client.js";
 import type { AttachmentSettings } from "./attachments.js";
 import { registerAccountReadTools, registerAccountWriteTools } from "./account.js";
+import { registerAdjustmentReadTools, registerAdjustmentWriteTools } from "./adjustments.js";
 import { registerCouponRateReadTools, registerCouponRateWriteTools } from "./coupon-rates.js";
 import { registerCustomInvestmentPriceReadTools, registerCustomInvestmentPriceWriteTools } from "./custom-investment-prices.js";
 import { registerCustomInvestmentReadTools, registerCustomInvestmentWriteTools } from "./custom-investments.js";
 import { registerHoldingReadTools, registerHoldingWriteTools } from "./holdings.js";
+import { registerLabelReadTools, registerLabelWriteTools } from "./labels.js";
 import { registerPayoutReadTools, registerPayoutWriteTools } from "./payouts.js";
 import { registerPerformanceReadTools } from "./performance.js";
 import { registerTradeReadTools, registerTradeWriteTools } from "./trades.js";
@@ -32,6 +34,8 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
   registerCustomInvestmentReadTools(server, client);
   registerCustomInvestmentPriceReadTools(server, client);
   registerCouponRateReadTools(server, client);
+  registerAdjustmentReadTools(server, client);
+  registerLabelReadTools(server, client);
   registerPerformanceReadTools(server, client);
   registerAccountReadTools(server, client);
 
@@ -46,5 +50,7 @@ export function registerTools(server: McpServer, client: SharesightClient, { hol
   registerCustomInvestmentWriteTools(server, client);
   registerCustomInvestmentPriceWriteTools(server, client);
   registerCouponRateWriteTools(server, client);
+  registerAdjustmentWriteTools(server, client);
+  registerLabelWriteTools(server, client);
   registerAccountWriteTools(server, client);
 }

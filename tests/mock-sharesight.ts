@@ -78,14 +78,21 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
       return;
     }
 
-    // Trades, payouts and portfolio settings: any write is accepted, and the body is kept so a test can see what the server sent
-    if (/^\/api\/v3\/(trades\.json|trades\/\d+\.json|holdings\/\d+\/payouts|payouts\/\d+|portfolios\/\d+\/user_setting)$/.test(path) && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method ?? "")) {
+    // Detaching a label from a holding answers 204 with no body, like Sharesight
+    if (req.method === "DELETE" && /^\/api\/v3\/holdings\/\d+\/labels\/[^/]+$/.test(path)) {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // Trades, payouts, adjustments, labels and portfolio settings: any write is accepted, and the body is kept so a test can see what the server sent
+    if (/^\/api\/v3\/(trades\.json|trades\/\d+\.json|holdings\/\d+\/payouts|payouts\/\d+|portfolios\/\d+\/user_setting|custom_investments\/\d+\/adjustments|adjustments\/\d+|portfolios\/\d+\/labels(\/[^/]+)?)$/.test(path) && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method ?? "")) {
       entry.body = text ? JSON.parse(text) : undefined;
       send(res, 200, { api_transaction: { id: 1 } });
       return;
     }
 
-    if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+)$/.test(path)) {
+    if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+|custom_investments\/\d+\/adjustments|adjustments\/\d+|portfolios\/\d+\/labels(\/[^/]+)?)$/.test(path)) {
       send(res, 200, { api_transaction: { id: 1 }, query: new URL(req.url ?? "/", "http://localhost").search });
       return;
     }
