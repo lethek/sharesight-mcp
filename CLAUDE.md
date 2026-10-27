@@ -22,7 +22,8 @@ sharesight-mcp/
 │   │   ├── common.ts         # formatResult, formatError and the annotation constants
 │   │   ├── attachments.ts    # Attachment inputs and withAttachment(): base64 or file path to Sharesight's attachment fields
 │   │   ├── portfolios.ts, holdings.ts, trades.ts, payouts.ts, custom-investments.ts, custom-investment-prices.ts,
-│   │   │   coupon-rates.ts, performance.ts, account.ts   # one area each, read tools and write tools
+│   │   │   coupon-rates.ts, adjustments.ts, labels.ts, performance.ts, reports.ts (v2 reports), confirmations.ts (v2 unconfirmed
+│   │   │   payouts and trades), account.ts   # one area each, read tools and write tools
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime

@@ -4,34 +4,36 @@ import { withServer } from "./stdio-session.js";
 
 type Seen = { requests: Array<{ method: string; path: string; body?: any }> };
 
-const lastPost = (mock: Seen) => mock.requests.filter((r) => r.method === "POST" && r.path.startsWith("/api/v2/")).at(-1)!;
-const noPost = (mock: Seen) => mock.requests.filter((r) => r.method === "POST" && r.path.startsWith("/api/v2/")).length === 0;
+const posts = (mock: Seen) => mock.requests.filter((r) => r.method === "POST" && r.path.startsWith("/api/v2/"));
+const lastPost = (mock: Seen) => posts(mock).at(-1)!;
 
 describe("unconfirmed payouts and trades", () => {
-  test("list_unconfirmed_payouts keeps only the unconfirmed ones and asks for a wide date range", async () => {
+  test("list_unconfirmed_payouts keeps only the unconfirmed ones and says which dates it searched", async () => {
     await withServer([], {}, async (call) => {
       const result = await call("list_unconfirmed_payouts", { portfolio_id: 7 });
 
       assert.equal(result.isError, false, result.text);
       assert.equal(result.payload.count, 1);
       assert.deepEqual(result.payload.unconfirmed_payouts, [{ id: null, state: "unconfirmed", company_event_id: 77 }]);
+      assert.deepEqual(result.payload.searched, { start_date: "2000-01-01", end_date: "2100-12-31" });
     });
   });
 
-  test("list_unconfirmed_trades keeps only the unconfirmed ones", async () => {
+  test("list_unconfirmed_trades keeps only the unconfirmed ones and reports the dates it was given", async () => {
     await withServer([], {}, async (call) => {
       const result = await call("list_unconfirmed_trades", { portfolio_id: 7, start_date: "2025-01-01" });
 
       assert.equal(result.payload.count, 2);
+      assert.deepEqual(result.payload.searched, { start_date: "2025-01-01", end_date: "2100-12-31" });
     });
   });
 
   test("confirm_payout posts the state under payout", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77 });
+      const result = await call("confirm_payout", { holding_id: 6, company_event_id: 77 });
 
       assert.equal(result.isError, false, result.text);
-      assert.deepEqual(lastPost(mock), { method: "POST", path: "/api/v2/payouts.json", body: { payout: { holding_id: 5, company_event_id: 77, state: "confirmed" } } });
+      assert.deepEqual(lastPost(mock), { method: "POST", path: "/api/v2/payouts.json", body: { payout: { holding_id: 6, company_event_id: 77, state: "confirmed" } } });
     });
   });
 
@@ -42,6 +44,34 @@ describe("unconfirmed payouts and trades", () => {
       assert.deepEqual(lastPost(mock).body, {
         payout: { holding_id: 5, company_event_id: 77, state: "confirmed", drp_trade_attributes: { dividend_reinvested: true, quantity: 10, price: 1.2, source_adjustment_id: 77 } },
       });
+    });
+  });
+
+  test("confirm_payout refuses when a reinvestment trade is pending and the caller did not choose", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77 });
+
+      assert.equal(result.isError, true);
+      assert.match(result.text, /pending reinvestment trade.*quantity 3 at price 4/);
+      assert.equal(posts(mock).length, 0);
+    });
+  });
+
+  test("skip_reinvestment confirms the payout anyway, without sending the flag", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77, skip_reinvestment: true });
+
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: 5, company_event_id: 77, state: "confirmed" } });
+    });
+  });
+
+  test("reinvestment and skip_reinvestment together are refused", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77, reinvestment: { quantity: 1, price: 1 }, skip_reinvestment: true });
+
+      assert.equal(result.isError, true);
+      assert.equal(posts(mock).length, 0);
     });
   });
 
@@ -61,6 +91,25 @@ describe("unconfirmed payouts and trades", () => {
     });
   });
 
+  test("rejecting by paid_on succeeds when Sharesight errors but nothing is left pending", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("reject_payout", { holding_id: 7, paid_on: "2025-12-20" });
+
+      assert.equal(result.isError, false, result.text);
+      assert.equal(result.payload.rejected, true);
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: 7, paid_on: "2025-12-20", state: "rejected" } });
+    });
+  });
+
+  test("rejecting by paid_on reports the error when the payout is still pending", async () => {
+    await withServer([], {}, async (call) => {
+      const result = await call("reject_payout", { holding_id: 8, paid_on: "2025-12-20" });
+
+      assert.equal(result.isError, true);
+      assert.match(result.text, /500/);
+    });
+  });
+
   test("there is no tool to confirm or reject a trade", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       const names = (await request("tools/list", {})).result.tools.map((tool: { name: string }) => tool.name);
@@ -72,14 +121,16 @@ describe("unconfirmed payouts and trades", () => {
 
   test("a payout must be named by exactly one of company_event_id and paid_on, and nothing is sent otherwise", async () => {
     await withServer([], {}, async (call, mock) => {
-      for (const args of [{ holding_id: 5 }, { holding_id: 5, company_event_id: 77, paid_on: "2025-12-20" }]) {
-        const result = await call("confirm_payout", args);
+      for (const name of ["confirm_payout", "reject_payout"]) {
+        for (const args of [{ holding_id: 5 }, { holding_id: 5, company_event_id: 77, paid_on: "2025-12-20" }]) {
+          const result = await call(name, args);
 
-        assert.equal(result.isError, true);
-        assert.match(result.text, /company_event_id/);
+          assert.equal(result.isError, true, name);
+          assert.match(result.text, /company_event_id/, name);
+        }
       }
 
-      assert.equal(noPost(mock), true);
+      assert.equal(posts(mock).length, 0);
     });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Sharesight API v3 Client
  *
- * This module provides a TypeScript client for interacting with the Sharesight API v3.
+ * This module provides a TypeScript client for interacting with the Sharesight API v3, and the few v2 endpoints that v3 lacks.
  * It handles authentication, request formatting, and response parsing.
  *
  * @see https://api.sharesight.com/doc/api/v3
@@ -32,6 +32,11 @@ import {
   BaseResponse,
 } from "./types.js";
 import { DEFAULT_BASE_URL, OAuthManager } from "./oauth.js";
+
+/** What a call returns when Sharesight answers 204 with no body */
+export interface NoContent {
+  status: 204;
+}
 
 const REQUEST_TIMEOUT_MS = 30000;
 const REPORT_REQUEST_TIMEOUT_MS = 180000; // performance reports can be slow on large portfolios
@@ -173,9 +178,9 @@ export class SharesightClient {
       );
     }
 
-    // Some deletes answer 204 with no body
+    // Some deletes answer 204 with no body, so callers of those endpoints are typed as NoContent
     if (response.status === 204) {
-      return {} as T;
+      return { status: 204 } as T;
     }
 
     return response.json().catch(rethrowTimeout) as Promise<T>;
@@ -909,13 +914,13 @@ export class SharesightClient {
     return this.request<PassThroughResponse>("PUT", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, data, options);
   }
 
-  async deleteLabel(portfolioId: number, label: string, options?: QueryParams): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("DELETE", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, undefined, options);
+  async deleteLabel(portfolioId: number, label: string, options?: QueryParams): Promise<NoContent> {
+    return this.request<NoContent>("DELETE", `/portfolios/${portfolioId}/labels/${encodeURIComponent(label)}`, undefined, options);
   }
 
   /** Detaches a label from one holding. */
-  async deleteHoldingLabel(holdingId: number, label: string): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("DELETE", `/holdings/${holdingId}/labels/${encodeURIComponent(label)}`);
+  async deleteHoldingLabel(holdingId: number, label: string): Promise<NoContent> {
+    return this.request<NoContent>("DELETE", `/holdings/${holdingId}/labels/${encodeURIComponent(label)}`);
   }
 
   // ==========================================================================
@@ -949,9 +954,18 @@ export class SharesightClient {
     return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/rejected_trades.json`, undefined, options);
   }
 
+  /** Lists the trades of a holding, confirmed and unconfirmed. */
+  async listHoldingTradesV2(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/trades.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Lists the payouts of a holding, confirmed and unconfirmed. */
+  async listHoldingPayoutsV2(holdingId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/payouts.json`, undefined, options);
+  }
+
   /** Confirms or rejects an unconfirmed payout, which the v2 API does with a POST of a new state. */
   async setPayoutStateV2(data: object): Promise<PassThroughResponse> {
     return this.request<PassThroughResponse>("POST", "/api/v2/payouts.json", { payout: data });
   }
-
 }

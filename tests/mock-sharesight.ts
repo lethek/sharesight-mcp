@@ -100,12 +100,31 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
     // v2: confirming or rejecting a payout is a POST of a new state, and the portfolio lists mix confirmed and unconfirmed items
     if (req.method === "POST" && path === "/api/v2/payouts.json") {
       entry.body = text ? JSON.parse(text) : undefined;
+
+      // Like Sharesight, which answers a rejection by paid_on with a 500 although it rejects the payout
+      if (entry.body?.payout?.state === "rejected" && entry.body.payout.paid_on) {
+        send(res, 500, { error: 2000, reason: "Internal Server Error" });
+        return;
+      }
+
       send(res, 200, { api_transaction: { id: 1 } });
       return;
     }
 
+    // Holding 5 has a pending reinvestment trade for company event 77. Holding 8 has an interest payout still waiting; holding 7 has none.
+    if (req.method === "GET" && /^\/api\/v2\/holdings\/\d+\/trades\.json$/.test(path)) {
+      const trades = path.includes("/holdings/5/") ? [{ state: "unconfirmed", company_event_id: 77, quantity: 3, price: 4 }, { state: "confirmed", company_event_id: null }] : [{ state: "confirmed", company_event_id: null }];
+      send(res, 200, { trades });
+      return;
+    }
+
+    if (req.method === "GET" && /^\/api\/v2\/holdings\/\d+\/payouts\.json$/.test(path)) {
+      send(res, 200, { payouts: path.includes("/holdings/8/") ? [{ state: "unconfirmed", paid_on: "2025-12-20" }] : [] });
+      return;
+    }
+
     if (req.method === "GET" && /^\/api\/v2\/portfolios\/\d+\/payouts\.json$/.test(path)) {
-      send(res, 200, { payouts: [{ id: 1, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 77 }], query: new URL(req.url ?? "/", "http://localhost").search });
+      send(res, 200, { payouts: [{ id: 1, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 77 }] });
       return;
     }
 

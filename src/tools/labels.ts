@@ -6,7 +6,7 @@ import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult } from "./
 const portfolioId = z.number().describe("The portfolio ID");
 const consolidated = z.boolean().optional().describe("True if portfolio_id is a consolidated portfolio view");
 const labelName = z.string().describe("The label name. Only letters, digits, spaces and underscores are allowed, so no hyphens.");
-const holdingIds = z.array(z.number()).describe("The holding IDs to attach the label to");
+const holdingIds = z.array(z.number()).min(1).describe("The holding IDs to attach the label to");
 
 export function registerLabelReadTools(server: McpServer, client: SharesightClient) {
   server.registerTool(

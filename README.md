@@ -157,10 +157,12 @@ Sharesight creates payouts and trades from company events and leaves them unconf
 | `list_unconfirmed_payouts` | Read | Payouts waiting to be confirmed, with the `company_event_id` each needs |
 | `list_unconfirmed_trades` | Read | Trades waiting to be confirmed |
 | `list_rejected_trades` | Read | Trades rejected for a holding |
-| `confirm_payout` | Write | Confirm a payout, optionally as a reinvestment (DRP) |
+| `confirm_payout` | Write | Confirm a payout, with `reinvestment` or `skip_reinvestment` when the holding reinvests dividends |
 | `reject_payout` | Write | Reject a payout so it no longer appears in the portfolio |
 
-Confirming or rejecting a payout also settles its dividend reinvestment trade. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Interest payouts, which have no `company_event_id`, are confirmed by `paid_on`.
+Dividend payouts are named by `company_event_id`, and interest payouts, which have none, by `paid_on`. The unconfirmed lists search 2000 to 2100 unless you narrow them, and say which dates they searched.
+
+Confirming or rejecting a payout also settles its dividend reinvestment trade. When a holding has one pending, `confirm_payout` refuses until you pass `reinvestment` (to keep the trade) or `skip_reinvestment` (to drop it), because confirming without either removes the trade. Sharesight answers a rejection by `paid_on` with a 500 error even though it rejects the payout, so `reject_payout` checks the holding and reports success when nothing is left pending. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Interest payouts, which have no `company_event_id`, are confirmed by `paid_on`.
 
 ### Performance and portfolio reports
 | Tool | Kind | Description |

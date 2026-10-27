@@ -79,7 +79,17 @@ describe("label tools", () => {
       const result = await call("delete_holding_label", { holding_id: 5, label: "growth stocks" });
 
       assert.equal(result.isError, false, result.text);
+      assert.deepEqual(result.payload, { status: 204 });
       assert.deepEqual({ method: lastRequest(mock).method, path: lastRequest(mock).path }, { method: "DELETE", path: "/api/v3/holdings/5/labels/growth%20stocks" });
+    });
+  });
+
+  test("a label needs at least one holding", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("create_label", { portfolio_id: 7, label: "empty", holding_ids: [] });
+
+      assert.equal(result.isError, true);
+      assert.equal(mock.requests.some((r) => r.path.endsWith("/labels")), false);
     });
   });
 
