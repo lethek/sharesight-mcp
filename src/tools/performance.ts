@@ -97,50 +97,6 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
   );
 
   server.registerTool(
-    "get_portfolio_overview",
-    {
-      description: "Retrieves a portfolio overview: the value and gains of each holding, optionally grouped",
-      annotations: READ_ONLY,
-      inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
-        start_date: z.string().optional().describe("Start date YYYY-MM-DD (defaults to portfolio inception)"),
-        grouping: z.string().optional().describe("Group by: country, currency, custom_group, industry_classification, investment_type, market, portfolio, sector_classification, ungrouped"),
-        custom_grouping_id: z.number().optional().describe("Custom group ID (requires grouping=custom_group)"),
-        report_combined: z.boolean().optional().describe("Also receive totals for holdings combined by instrument"),
-        include_sales: z.boolean().optional().describe("true to include holdings sold between the start date and today"),
-      }),
-    },
-    async ({ portfolio_id, ...options }) => {
-      try {
-        return formatResult(await client.getPortfolioOverview(portfolio_id, options));
-      } catch (error) {
-        return formatError(error);
-      }
-    }
-  );
-
-  server.registerTool(
-    "get_portfolio_totals",
-    {
-      description: "Retrieves the totals of a portfolio",
-      annotations: READ_ONLY,
-      inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
-        include_sales: z.boolean().optional().describe("true to include sales, false to exclude them"),
-      }),
-    },
-    async ({ portfolio_id, ...options }) => {
-      try {
-        return formatResult(await client.getPortfolioTotals(portfolio_id, options));
-      } catch (error) {
-        return formatError(error);
-      }
-    }
-  );
-
-  server.registerTool(
     "get_portfolio_benchmark",
     {
       description: "Compares a portfolio's performance with a benchmark instrument",

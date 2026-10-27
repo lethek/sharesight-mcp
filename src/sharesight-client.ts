@@ -795,16 +795,6 @@ export class SharesightClient {
     return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/reports`, undefined, { type });
   }
 
-  /** Retrieves the holdings overview of a portfolio: values and gains per holding, optionally grouped. */
-  async getPortfolioOverview(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/overview`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
-  }
-
-  /** Retrieves the totals of a portfolio. */
-  async getPortfolioTotals(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/totals`, undefined, options);
-  }
-
   /** Compares a portfolio with a benchmark instrument. */
   async getPortfolioBenchmark(portfolioId: number, options: QueryParams): Promise<PassThroughResponse> {
     return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/benchmark.json`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);

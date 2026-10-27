@@ -85,7 +85,7 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
       return;
     }
 
-    if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|overview|totals|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+)$/.test(path)) {
+    if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+)$/.test(path)) {
       send(res, 200, { api_transaction: { id: 1 }, query: new URL(req.url ?? "/", "http://localhost").search });
       return;
     }
