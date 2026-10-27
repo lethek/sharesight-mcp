@@ -12,12 +12,14 @@
  * @module index
  */
 
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { McpServer } from "@modelcontextprotocol/server";
+import type { Server } from "node:http";
 import { z } from "zod";
 import { SharesightClient } from "./sharesight-client.js";
 import { OAuthManager, TokenRequestError } from "./oauth.js";
-import { MCP_PATH, startHttpServer } from "./http.js";
+import { MCP_PATH, assertAuthConfigured, endpointUrl, shutdownHttpServer, startHttpServer, type HttpServerOptions } from "./http.js";
+import { errorMessage } from "./error-message.js";
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const DEFAULT_HTTP_PORT = 3000;
@@ -45,9 +47,7 @@ function formatResult(result: unknown) {
 }
 
 function formatError(error: unknown) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-
-  return { content: [{ type: "text" as const, text: `Error: ${errorMessage}` }], isError: true };
+  return { content: [{ type: "text" as const, text: `Error: ${errorMessage(error)}` }], isError: true };
 }
 
 function registerTools(server: McpServer, client: SharesightClient) {
@@ -717,24 +717,58 @@ function registerTools(server: McpServer, client: SharesightClient) {
   );
 }
 
-async function runServe(useHttp: boolean): Promise<void> {
-  const oauth = createOAuthManager();
+type HttpConfig = Omit<HttpServerOptions, "factory">;
 
-  try {
-    await oauth.getValidAccessToken();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+/** Reads the `serve` options. Returns the HTTP settings when HTTP is selected, or undefined for stdio. */
+function readServeConfig(args: string[], env: NodeJS.ProcessEnv): HttpConfig | undefined {
+  const unknown = args.find((arg) => arg !== "--http");
 
-    // Wrong credentials will never recover; other failures (network, 5xx) may, so retry on the first tool call
-    if (error instanceof TokenRequestError && error.isCredentialError) {
-      console.error(`Error: ${message}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    console.error(`Warning: could not get an access token at startup, will retry on first use: ${message}`);
+  if (unknown) {
+    throw new Error(`Unknown option for serve: ${unknown}`);
   }
 
+  const transport = env.MCP_TRANSPORT?.trim().toLowerCase() || undefined;
+  const httpFlag = args.includes("--http");
+
+  if (transport !== undefined && transport !== "stdio" && transport !== "http") {
+    throw new Error(`MCP_TRANSPORT must be "stdio" or "http", got "${env.MCP_TRANSPORT}".`);
+  }
+
+  if (httpFlag && transport === "stdio") {
+    throw new Error("--http conflicts with MCP_TRANSPORT=stdio. Remove one of them.");
+  }
+
+  if (!httpFlag && transport !== "http") {
+    return undefined;
+  }
+
+  const host = env.MCP_HOST?.trim() || DEFAULT_HTTP_HOST;
+  const portText = env.MCP_PORT?.trim() || String(DEFAULT_HTTP_PORT);
+  const port = Number(portText);
+  const authToken = env.MCP_AUTH_TOKEN?.trim() || undefined;
+
+  if (!/^\d+$/.test(portText) || port > 65535) {
+    throw new Error(`MCP_PORT must be an integer from 0 to 65535, got "${portText}".`);
+  }
+
+  assertAuthConfigured(host, authToken);
+
+  return { host, port, authToken };
+}
+
+async function runServe(): Promise<void> {
+  // Check the options before anything slow, so a typo is reported straight away
+  let httpConfig: HttpConfig | undefined;
+
+  try {
+    httpConfig = readServeConfig(process.argv.slice(3), process.env);
+  } catch (error) {
+    console.error(`Error: ${errorMessage(error)}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const oauth = createOAuthManager();
   const client = new SharesightClient(oauth);
 
   const createServer = (): McpServer => {
@@ -748,47 +782,68 @@ async function runServe(useHttp: boolean): Promise<void> {
     return server;
   };
 
-  if (useHttp) {
-    await runHttp(createServer);
+  if (httpConfig) {
+    // Listen before the token check, so a slow token endpoint does not hold up health checks
+    const httpServer = await runHttp(createServer, httpConfig);
+
+    if (httpServer && !(await prefetchToken(oauth))) {
+      await shutdownHttpServer(httpServer);
+    }
+
     return;
   }
 
-  const transport = new StdioServerTransport();
-  await createServer().connect(transport);
+  if (!(await prefetchToken(oauth))) {
+    return;
+  }
+
+  // serveStdio picks the protocol era from the client's opening message, so 2025 and 2026-07-28 clients both connect
+  serveStdio(createServer, { onerror: (error) => console.error(`MCP error: ${error.message}`) });
   console.error("Sharesight MCP server running on stdio");
 }
 
-async function runHttp(createServer: () => McpServer): Promise<void> {
-  const host = process.env.HOST?.trim() || DEFAULT_HTTP_HOST;
-  const port = Number(process.env.PORT?.trim() || DEFAULT_HTTP_PORT);
-  const authToken = process.env.MCP_AUTH_TOKEN?.trim() || undefined;
+/** Checks the credentials with a token request. Returns false, and sets a failing exit code, only if they were rejected. */
+async function prefetchToken(oauth: OAuthManager): Promise<boolean> {
+  try {
+    await oauth.getValidAccessToken();
+  } catch (error) {
+    const message = errorMessage(error);
 
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    console.error(`Error: PORT must be an integer from 0 to 65535, got "${process.env.PORT}".`);
-    process.exitCode = 1;
-    return;
+    // Wrong credentials will never recover; other failures (network, 5xx) may, so retry on the first tool call
+    if (error instanceof TokenRequestError && error.isCredentialError) {
+      console.error(`Error: ${message}`);
+      process.exitCode = 1;
+      return false;
+    }
+
+    console.error(`Warning: could not get an access token at startup, will retry on first use: ${message}`);
   }
 
-  let httpServer;
+  return true;
+}
+
+/** Starts the HTTP server and registers the shutdown signals. Returns undefined, with a failing exit code, if it could not start. */
+async function runHttp(createServer: () => McpServer, { host, port, authToken }: HttpConfig): Promise<Server | undefined> {
+  let httpServer: Server;
 
   try {
     httpServer = await startHttpServer({ factory: createServer, host, port, authToken });
   } catch (error) {
-    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Error: ${errorMessage(error)}`);
     process.exitCode = 1;
-    return;
+    return undefined;
   }
 
   const address = httpServer.address();
   const listeningPort = typeof address === "object" && address ? address.port : port;
-  console.error(`Sharesight MCP server running on http://${host}:${listeningPort}${MCP_PATH}${authToken ? "" : " (no auth token set)"}`);
+  console.error(`Sharesight MCP server running on ${endpointUrl(host, listeningPort)}${authToken ? "" : " (no auth token set)"}`);
 
-  const shutdown = () => {
-    httpServer.close();
-    httpServer.closeAllConnections();
-  };
+  // Exit once the server has closed, rather than waiting for Sharesight calls whose clients have already gone
+  const shutdown = () => void shutdownHttpServer(httpServer).then(() => process.exit());
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+
+  return httpServer;
 }
 
 // ============================================================================
@@ -806,10 +861,10 @@ Commands:
   serve [--http]   Run the MCP server over stdio (default) or Streamable HTTP
 
 HTTP environment variables:
-  PORT             Port to listen on (default ${DEFAULT_HTTP_PORT})
-  HOST             Address to bind (default ${DEFAULT_HTTP_HOST})
-  MCP_AUTH_TOKEN   Bearer token clients must send; required when HOST is not a loopback address
-  MCP_TRANSPORT    Set to "http" to use HTTP without the --http flag
+  MCP_PORT         Port to listen on (default ${DEFAULT_HTTP_PORT})
+  MCP_HOST         Address to bind (default ${DEFAULT_HTTP_HOST})
+  MCP_AUTH_TOKEN   Bearer token clients must send; required when MCP_HOST is not a loopback address
+  MCP_TRANSPORT    "stdio" (default) or "http", an alternative to the --http flag
 
 Examples:
   sharesight-mcp serve          # Start the MCP server on stdio
@@ -822,11 +877,9 @@ async function main(): Promise<void> {
   const command = process.argv[2] || "serve";
 
   switch (command) {
-    case "serve": {
-      const useHttp = process.argv.includes("--http") || process.env.MCP_TRANSPORT?.trim().toLowerCase() === "http";
-      await runServe(useHttp);
+    case "serve":
+      await runServe();
       break;
-    }
     case "--help":
     case "-h":
       printUsage();

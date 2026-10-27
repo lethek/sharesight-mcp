@@ -141,15 +141,22 @@ By default the server talks to a local client over stdio. To serve MCP over Stre
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PORT` | `3000` | Port to listen on |
-| `HOST` | `127.0.0.1` | Address to bind |
+| `MCP_PORT` | `3000` | Port to listen on |
+| `MCP_HOST` | `127.0.0.1` | Address to bind |
 | `MCP_AUTH_TOKEN` | none | Bearer token clients must send |
+| `MCP_TRANSPORT` | `stdio` | `stdio` or `http`, an alternative to the `--http` flag (using `--http` with `MCP_TRANSPORT=stdio` is an error) |
 
-The endpoint is `/mcp`, and `/healthz` returns `ok` without authentication, for container health checks.
+`MCP_HOST` accepts IPv6 addresses with or without brackets, for example `[::1]`.
 
-The endpoint acts as your single Sharesight account, so anyone who can call it can read and change your portfolio. `MCP_AUTH_TOKEN` is required when `HOST` is not a loopback address, and the server will not start without it. Without a token on loopback, requests with a non-local `Host` or `Origin` header are rejected. The server speaks plain HTTP, so put it behind a TLS-terminating proxy before exposing it beyond your machine.
+The endpoint is `/mcp`, and `/healthz` returns `ok` without authentication, for container health checks. It only reports that the process is up and listening. It does not check that Sharesight is reachable or that the credentials still work.
 
-The server is stateless. Each request gets a fresh server instance and there are no sessions, so it works behind a round-robin load balancer. It serves both the 2026-07-28 protocol and 2025-era clients.
+The endpoint acts as your single Sharesight account, so anyone who can call it can read and change your portfolio. `MCP_AUTH_TOKEN` is required when `MCP_HOST` is not a loopback address, and the server will not start without it. Without a token on loopback, requests with a non-local `Host` or `Origin` header are rejected. The server speaks plain HTTP, so put it behind a TLS-terminating proxy before exposing it beyond your machine.
+
+The server is stateless. Each request gets a fresh server instance and there are no sessions, so it works behind a round-robin load balancer. It serves both the 2026-07-28 protocol and 2025-era clients, over stdio as well as HTTP.
+
+Responses are streamed with a keepalive every 15 seconds, so long calls such as the performance reports (up to 180 seconds) are not cut by a proxy's idle timeout. A proxy's total request timeout should still be above 180 seconds.
+
+On SIGINT or SIGTERM the server stops accepting connections and gives in-flight requests 8 seconds to finish before cutting them.
 
 Clients send the token as `Authorization: Bearer <token>`.
 

@@ -9,7 +9,7 @@ This is an MCP (Model Context Protocol) server that wraps the Sharesight v3 API,
 **Tech Stack:**
 - TypeScript
 - Node.js 24+
-- MCP SDK (`@modelcontextprotocol/sdk`)
+- MCP SDK v2 (`@modelcontextprotocol/server`, plus `@modelcontextprotocol/node` for HTTP)
 
 ## Project Structure
 
@@ -18,10 +18,11 @@ sharesight-mcp/
 ├── src/
 │   ├── index.ts              # CLI entry point with the serve command
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
+│   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
 │   ├── sharesight-client.ts  # HTTP client for Sharesight API
 │   ├── types.ts              # TypeScript interfaces for API types
-│   ├── *.test.ts             # node:test suites (oauth, client, startup)
+│   ├── *.test.ts             # node:test suites (oauth, client, startup, http)
 │   └── test-helpers.ts       # stubFetch and response builders shared by the tests
 ├── .github/workflows/ci.yml  # Build and test on PRs and main; reusable via workflow_call
 ├── scripts/                  # Build helpers (clean-test-build.mjs, used by npm test)
@@ -42,7 +43,7 @@ The main CLI entry point with one command:
 Contains tool definitions using Zod schemas for validation. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside the shared `SharesightClient`.
 
 ### `src/http.ts`
-Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `PORT`, `HOST` and `MCP_AUTH_TOKEN`.
+Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `MCP_PORT`, `MCP_HOST` and `MCP_AUTH_TOKEN`; the generic `PORT` and `HOST` are deliberately not read. Stdio uses `serveStdio` so it also serves both protocol eras, and `serve` rejects unknown options before it contacts the token endpoint.
 
 ### `src/oauth.ts`
 OAuth 2.0 manager class using the client credentials grant. Holds the access token in memory and requests a new one when it expires.
