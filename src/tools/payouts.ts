@@ -4,7 +4,7 @@ import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
 import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult } from "./common.js";
 
-const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but Sharesight offers no way to download one.";
+const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but this server cannot download the file itself.";
 
 /** Each payout type has its own object of amounts and tax details, named after the type. */
 const PAYOUT_TYPES = [

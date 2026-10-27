@@ -128,6 +128,12 @@ describe("a data root", () => {
     assert.deepEqual(await read(join(root, "sub", "inside.txt")), { attachment: BASE64, attachment_filename: "inside.txt" });
   });
 
+  test("accepts a file whose name merely starts with two dots", async () => {
+    writeFileSync(join(root, "..dots.txt"), CONTENT);
+
+    assert.deepEqual(await read("..dots.txt"), { attachment: BASE64, attachment_filename: "..dots.txt" });
+  });
+
   test("refuses a path that climbs out of the root", async () => {
     await assert.rejects(read("../outside.txt"), /inside the server's data root/);
     await assert.rejects(read("sub/../../outside.txt"), /inside the server's data root/);

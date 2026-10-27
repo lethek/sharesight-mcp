@@ -1,5 +1,5 @@
-import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, isAbsolute, relative, resolve } from "node:path";
+import { open, realpath, stat } from "node:fs/promises";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 
 /** Inputs for the tools that create or update a trade or payout, which Sharesight lets carry one attachment. */
@@ -62,11 +62,48 @@ async function resolveAttachmentPath(path: string, { root, unrestricted }: Attac
   const [realRoot, realFile] = await Promise.all([realpath(root), realpath(resolve(root, path))]);
   const fromRoot = relative(realRoot, realFile);
 
-  if (fromRoot === "" || fromRoot.startsWith("..") || isAbsolute(fromRoot)) {
+  if (fromRoot === "" || fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
     throw new Error("attachment_path must be a file inside the server's data root.");
   }
 
   return realFile;
+}
+
+/**
+ * Reads the file at a path that resolveAttachmentPath has returned. The file is opened first and everything is checked on the open
+ * handle, so the size limit holds for the bytes actually read. With a data root, the path is then resolved again and must still
+ * lead to the same file, which catches a symbolic link swapped in between the first check and the open.
+ */
+async function readAttachmentFile(file: string, settings: AttachmentSettings): Promise<Buffer> {
+  const handle = await open(file, "r");
+
+  try {
+    const info = await handle.stat();
+
+    if (!info.isFile()) {
+      throw new Error("attachment_path must be a regular file.");
+    }
+
+    // Checked before reading, so an oversized file is never loaded
+    checkSize(info.size, settings.maxBytes);
+
+    if (settings.root !== undefined) {
+      const again = await resolveAttachmentPath(file, settings);
+      const now = await stat(again);
+
+      if (again !== file || now.ino !== info.ino || now.dev !== info.dev) {
+        throw new Error("attachment_path changed while it was being read.");
+      }
+    }
+
+    const content = await handle.readFile();
+
+    checkSize(content.length, settings.maxBytes);
+
+    return content;
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
@@ -92,16 +129,7 @@ export async function withAttachment<T extends AttachmentArgs>(args: T, settings
 
   if (path !== undefined) {
     const file = await resolveAttachmentPath(path, settings);
-    const info = await stat(file);
-
-    if (!info.isFile()) {
-      throw new Error("attachment_path must be a regular file.");
-    }
-
-    // Checked before reading, so an oversized file is never loaded
-    checkSize(info.size, settings.maxBytes);
-
-    const content = await readFile(file);
+    const content = await readAttachmentFile(file, settings);
 
     return { ...rest, attachment: content.toString("base64"), attachment_filename: filename ?? basename(file) } as WithAttachment<T>;
   }

@@ -35,6 +35,12 @@ import { DEFAULT_BASE_URL, OAuthManager } from "./oauth.js";
 
 const REQUEST_TIMEOUT_MS = 30000;
 const REPORT_REQUEST_TIMEOUT_MS = 180000; // performance reports can be slow on large portfolios
+const UPLOAD_REQUEST_TIMEOUT_MS = 180000; // a trade or payout with an attachment sends a large body
+
+/** Writes that carry an attachment get the longer limit, because the upload itself can take a while on a slow connection. */
+function writeTimeout(data: object): number {
+  return "attachment" in data && data.attachment ? UPLOAD_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+}
 
 /**
  * SharesightClient provides methods for interacting with the Sharesight API v3.
@@ -830,11 +836,11 @@ export class SharesightClient {
 
   /** Creates a trade. The body is flat; an attachment goes in as base64 with its file name. */
   async createTrade(data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("POST", "/trades.json", data);
+    return this.request<PassThroughResponse>("POST", "/trades.json", data, undefined, writeTimeout(data));
   }
 
   async updateTrade(id: number, data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("PUT", `/trades/${id}.json`, data);
+    return this.request<PassThroughResponse>("PUT", `/trades/${id}.json`, data, undefined, writeTimeout(data));
   }
 
   async deleteTrade(id: number): Promise<BaseResponse> {
@@ -852,11 +858,11 @@ export class SharesightClient {
 
   /** Creates a payout. The body is flat; an attachment goes in as base64 with its file name. */
   async createPayout(holdingId: number, data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("POST", `/holdings/${holdingId}/payouts`, data);
+    return this.request<PassThroughResponse>("POST", `/holdings/${holdingId}/payouts`, data, undefined, writeTimeout(data));
   }
 
   async updatePayout(id: number, data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("PUT", `/payouts/${id}`, data);
+    return this.request<PassThroughResponse>("PUT", `/payouts/${id}`, data, undefined, writeTimeout(data));
   }
 
   async deletePayout(id: number): Promise<BaseResponse> {
