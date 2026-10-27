@@ -66,15 +66,41 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
   },
 };
 
+interface Annotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+}
+
+const READS_DATA: Annotations = { readOnlyHint: true };
+const ADDS_DATA: Annotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false };
+const CHANGES_DATA: Annotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
+const REMOVES_DATA: Annotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true };
+
+/** The annotations a tool must carry, by the verb its name starts with. A new verb is one entry here. */
+const VERB_ANNOTATIONS: Record<string, Annotations> = {
+  list: READS_DATA,
+  get: READS_DATA,
+  show: READS_DATA,
+  create: ADDS_DATA,
+  apply: ADDS_DATA,
+  update: CHANGES_DATA,
+  confirm: CHANGES_DATA,
+  delete: REMOVES_DATA,
+  reject: REMOVES_DATA,
+};
+
 /** Update tools that can replace or remove an attachment, which cannot be read back, so they are marked destructive. */
 const OVERWRITES = ["update_trade", "update_payout"];
+
+const expectedAnnotations = (name: string): Annotations | undefined => (OVERWRITES.includes(name) ? REMOVES_DATA : VERB_ANNOTATIONS[name.split("_")[0]]);
 
 const READS =Object.values(AREAS).flatMap((area) => area.read).sort();
 const WRITES = Object.values(AREAS).flatMap((area) => area.write).sort();
 
 interface ListedTool {
   name: string;
-  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
+  annotations?: Annotations;
 }
 
 const listTools = async (request: Request): Promise<ListedTool[]> => (await request("tools/list", {})).result.tools;
@@ -101,21 +127,10 @@ describe("tool groups", () => {
   test("the tool name says how the tool is annotated", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       for (const { name, annotations } of await listTools(request)) {
-        const hints = JSON.stringify(annotations);
+        const expected = expectedAnnotations(name);
 
-        if (/^(list|get|show)_/.test(name)) {
-          assert.deepEqual(annotations, { readOnlyHint: true }, `${name} ${hints}`);
-        } else if (/^(create|apply)_/.test(name)) {
-          assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, `${name} ${hints}`);
-        } else if (OVERWRITES.includes(name)) {
-          assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, `${name} ${hints}`);
-        } else if (/^(update|confirm)_/.test(name)) {
-          assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, `${name} ${hints}`);
-        } else if (/^(delete|reject)_/.test(name)) {
-          assert.deepEqual(annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, `${name} ${hints}`);
-        } else {
-          assert.fail(`${name} does not start with a known verb, so its annotations cannot be checked`);
-        }
+        assert.ok(expected, `${name} does not start with a known verb, so its annotations cannot be checked`);
+        assert.deepEqual(annotations, expected, `${name} ${JSON.stringify(annotations)}`);
       }
     });
   });
@@ -124,7 +139,7 @@ describe("tool groups", () => {
     await withServer([], {}, async (_call, _mock, request) => {
       const destructive = (await listTools(request)).filter((tool) => tool.annotations?.destructiveHint === true);
 
-      assert.deepEqual(names(destructive), WRITES.filter((name) => /^(delete|reject)_/.test(name) || OVERWRITES.includes(name)).sort());
+      assert.deepEqual(names(destructive), WRITES.filter((name) => expectedAnnotations(name)?.destructiveHint).sort());
     });
   });
 });

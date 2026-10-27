@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { READ_ONLY, formatError, formatResult } from "./common.js";
+import { READ_ONLY, consolidated, formatError, formatResult, portfolioId } from "./common.js";
 
 /** Performance and portfolio reports. They only read data, so this area has no write tools. */
 export function registerPerformanceReadTools(server: McpServer, client: SharesightClient) {
@@ -11,10 +11,10 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       description: "Retrieves the performance report for a portfolio with gains, holdings breakdown, and benchmarks",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
+        portfolio_id: portfolioId,
         start_date: z.string().optional().describe("Start date YYYY-MM-DD (defaults to portfolio inception)"),
         end_date: z.string().optional().describe("End date YYYY-MM-DD (defaults to today)"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
+        consolidated,
         include_sales: z.boolean().optional().describe("Include or exclude sales"),
         report_combined: z.boolean().optional().describe("Receive combined totals for same instruments across portfolios"),
         grouping: z.string().optional().describe("Group by: country, currency, custom_group, industry_classification, investment_type, market, portfolio, sector_classification, ungrouped"),
@@ -50,8 +50,8 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       description: "Returns performance index chart data points for visualizing portfolio performance over time",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("True if consolidated view is requested"),
+        portfolio_id: portfolioId,
+        consolidated,
         start_date: z.string().optional().describe("Start date YYYY-MM-DD (defaults to inception)"),
         end_date: z.string().optional().describe("End date YYYY-MM-DD (defaults to today)"),
         grouping: z.string().optional().describe("Group by: country, currency, custom_group, industry_classification, investment_type, market, portfolio, sector_classification, ungrouped"),
@@ -83,7 +83,7 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       description: "Retrieves the reports saved for a portfolio",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
+        portfolio_id: portfolioId,
         type: z.enum(["tax", "tools"]).describe("Which reports to list: tax or tools"),
       }),
     },
@@ -102,11 +102,11 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       description: "Compares a portfolio's performance with a benchmark instrument",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
+        portfolio_id: portfolioId,
         start_date: z.string().describe("Calculate from this date YYYY-MM-DD, in the portfolio's time zone"),
         end_date: z.string().optional().describe("Calculate to this date YYYY-MM-DD (defaults to today)"),
         instrument_id: z.number().optional().describe("The instrument to use as the benchmark"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
+        consolidated,
         interest_method: z.enum(["simple", "compound"]).optional().describe("Interest method for percentage calculations (default simple)"),
       }),
     },
@@ -125,8 +125,8 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       description: "Retrieves the current value of a portfolio, optionally in another currency",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
+        portfolio_id: portfolioId,
+        consolidated,
         currency_code: z.string().optional().describe("ISO code of the currency to return the value in"),
       }),
     },
@@ -145,8 +145,8 @@ export function registerPerformanceReadTools(server: McpServer, client: Sharesig
       description: "Retrieves a portfolio's value over time with the price difference for the period",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
+        portfolio_id: portfolioId,
+        consolidated,
         start_date: z.string().optional().describe("Start of the period YYYY-MM-DD (defaults to portfolio inception)"),
       }),
     },

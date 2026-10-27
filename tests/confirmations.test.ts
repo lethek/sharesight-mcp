@@ -1,7 +1,17 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import type { MockSharesight } from "./mock-sharesight.js";
+import {
+  HOLDING_WITH_NOTHING_PENDING as NOTHING_PENDING,
+  HOLDING_WITH_PENDING_INTEREST as PENDING_INTEREST,
+  HOLDING_WITH_PENDING_REINVESTMENT as PENDING_REINVESTMENT,
+  PORTFOLIO_WITH_LONG_LISTS as LONG_LISTS,
+  type MockSharesight,
+} from "./mock-sharesight.js";
+import { walkPages } from "./pages.js";
 import { withServer } from "./stdio-session.js";
+
+/** The holding the mock has no pending reinvestment trade for, so a plain confirmation goes straight through */
+const PLAIN_HOLDING = 6;
 
 const posts = (mock: MockSharesight) => mock.requests.filter((r) => r.method === "POST" && r.path.startsWith("/api/v2/"));
 const lastPost = (mock: MockSharesight) => posts(mock).at(-1)!;
@@ -29,33 +39,18 @@ describe("unconfirmed payouts and trades", () => {
 
   test("a long unconfirmed list comes in pages from one fetch, oldest first, and the cursor only fits its own query", async () => {
     await withServer([], { MCP_MAX_RESPONSE_CHARS: "5000" }, async (call, mock) => {
-      const fetches = () => mock.requests.filter((r) => r.path === "/api/v2/portfolios/99/payouts.json").length;
-      const seen: number[] = [];
-      let page = await call("list_unconfirmed_payouts", { portfolio_id: 99 });
-      let pages = 1;
+      const first = await call("list_unconfirmed_payouts", { portfolio_id: LONG_LISTS });
+      const pages = await walkPages(first.payload, async (cursor) => (await call("list_unconfirmed_payouts", { portfolio_id: LONG_LISTS, cursor })).payload);
+      const seen: number[] = pages.flatMap((page) => page.unconfirmed_payouts.map((p: { company_event_id: number }) => p.company_event_id));
 
-      assert.equal(page.payload.pagination.total, 60);
-      assert.equal(page.payload.pagination.has_more, true);
-
-      for (;;) {
-        seen.push(...page.payload.unconfirmed_payouts.map((p: { company_event_id: number }) => p.company_event_id));
-
-        if (!page.payload.pagination.has_more) {
-          break;
-        }
-
-        page = await call("list_unconfirmed_payouts", { portfolio_id: 99, cursor: page.payload.pagination.next_cursor });
-        pages++;
-      }
-
-      assert.ok(pages > 1);
-      assert.equal(fetches(), 1, "later pages come from the cached list");
+      assert.equal(first.payload.pagination.total, 60);
+      assert.ok(pages.length > 1);
+      assert.equal(mock.requests.filter((r) => r.path === `/api/v2/portfolios/${LONG_LISTS}/payouts.json`).length, 1, "later pages come from the cached list");
       assert.equal(seen.length, 60);
       assert.equal(new Set(seen).size, 60);
       assert.deepEqual(seen, [...seen].sort((a, b) => b - a), "oldest first means highest event number first in this data");
 
-      const first = await call("list_unconfirmed_payouts", { portfolio_id: 99 });
-      const other = await call("list_unconfirmed_payouts", { portfolio_id: 99, start_date: "2025-01-01", cursor: first.payload.pagination.next_cursor });
+      const other = await call("list_unconfirmed_payouts", { portfolio_id: LONG_LISTS, start_date: "2025-01-01", cursor: first.payload.pagination.next_cursor });
 
       assert.equal(other.isError, true);
       assert.match(other.text, /different query/);
@@ -64,26 +59,26 @@ describe("unconfirmed payouts and trades", () => {
 
   test("confirm_payout posts the state under payout", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("confirm_payout", { holding_id: 6, company_event_id: 77 });
+      const result = await call("confirm_payout", { holding_id: PLAIN_HOLDING, company_event_id: 77 });
 
       assert.equal(result.isError, false, result.text);
-      assert.deepEqual(lastPost(mock), { method: "POST", path: "/api/v2/payouts.json", body: { payout: { holding_id: 6, company_event_id: 77, state: "confirmed" } } });
+      assert.deepEqual(lastPost(mock), { method: "POST", path: "/api/v2/payouts.json", body: { payout: { holding_id: PLAIN_HOLDING, company_event_id: 77, state: "confirmed" } } });
     });
   });
 
   test("confirm_payout sends the reinvestment as drp_trade_attributes", async () => {
     await withServer([], {}, async (call, mock) => {
-      await call("confirm_payout", { holding_id: 5, company_event_id: 77, reinvestment: { quantity: 10, price: 1.2 } });
+      await call("confirm_payout", { holding_id: PENDING_REINVESTMENT, company_event_id: 77, reinvestment: { quantity: 10, price: 1.2 } });
 
       assert.deepEqual(lastPost(mock).body, {
-        payout: { holding_id: 5, company_event_id: 77, state: "confirmed", drp_trade_attributes: { dividend_reinvested: true, quantity: 10, price: 1.2, source_adjustment_id: 77 } },
+        payout: { holding_id: PENDING_REINVESTMENT, company_event_id: 77, state: "confirmed", drp_trade_attributes: { dividend_reinvested: true, quantity: 10, price: 1.2, source_adjustment_id: 77 } },
       });
     });
   });
 
   test("confirm_payout refuses when a reinvestment trade is pending and the caller did not choose", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77 });
+      const result = await call("confirm_payout", { holding_id: PENDING_REINVESTMENT, company_event_id: 77 });
 
       assert.equal(result.isError, true);
       assert.match(result.text, /pending reinvestment trade.*quantity 3 at price 4/);
@@ -93,16 +88,16 @@ describe("unconfirmed payouts and trades", () => {
 
   test("skip_reinvestment confirms the payout anyway, without sending the flag", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77, skip_reinvestment: true });
+      const result = await call("confirm_payout", { holding_id: PENDING_REINVESTMENT, company_event_id: 77, skip_reinvestment: true });
 
       assert.equal(result.isError, false, result.text);
-      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: 5, company_event_id: 77, state: "confirmed" } });
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: PENDING_REINVESTMENT, company_event_id: 77, state: "confirmed" } });
     });
   });
 
   test("reinvestment and skip_reinvestment together are refused", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("confirm_payout", { holding_id: 5, company_event_id: 77, reinvestment: { quantity: 1, price: 1 }, skip_reinvestment: true });
+      const result = await call("confirm_payout", { holding_id: PENDING_REINVESTMENT, company_event_id: 77, reinvestment: { quantity: 1, price: 1 }, skip_reinvestment: true });
 
       assert.equal(result.isError, true);
       assert.equal(posts(mock).length, 0);
@@ -111,33 +106,33 @@ describe("unconfirmed payouts and trades", () => {
 
   test("confirm_payout can name an interest payout by paid_on", async () => {
     await withServer([], {}, async (call, mock) => {
-      await call("confirm_payout", { holding_id: 5, paid_on: "2025-12-20" });
+      await call("confirm_payout", { holding_id: PENDING_INTEREST, paid_on: "2025-12-20" });
 
-      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: 5, paid_on: "2025-12-20", state: "confirmed" } });
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: PENDING_INTEREST, paid_on: "2025-12-20", state: "confirmed" } });
     });
   });
 
   test("reject_payout posts the rejected state", async () => {
     await withServer([], {}, async (call, mock) => {
-      await call("reject_payout", { holding_id: 5, company_event_id: 77 });
+      await call("reject_payout", { holding_id: PENDING_REINVESTMENT, company_event_id: 77 });
 
-      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: 5, company_event_id: 77, state: "rejected" } });
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: PENDING_REINVESTMENT, company_event_id: 77, state: "rejected" } });
     });
   });
 
   test("rejecting by paid_on succeeds when Sharesight errors but nothing is left pending", async () => {
     await withServer([], {}, async (call, mock) => {
-      const result = await call("reject_payout", { holding_id: 7, paid_on: "2025-12-20" });
+      const result = await call("reject_payout", { holding_id: NOTHING_PENDING, paid_on: "2025-12-20" });
 
       assert.equal(result.isError, false, result.text);
       assert.equal(result.payload.rejected, true);
-      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: 7, paid_on: "2025-12-20", state: "rejected" } });
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: NOTHING_PENDING, paid_on: "2025-12-20", state: "rejected" } });
     });
   });
 
   test("rejecting by paid_on reports the error when the payout is still pending", async () => {
     await withServer([], {}, async (call) => {
-      const result = await call("reject_payout", { holding_id: 8, paid_on: "2025-12-20" });
+      const result = await call("reject_payout", { holding_id: PENDING_INTEREST, paid_on: "2025-12-20" });
 
       assert.equal(result.isError, true);
       assert.match(result.text, /500/);
@@ -156,7 +151,7 @@ describe("unconfirmed payouts and trades", () => {
   test("a payout must be named by exactly one of company_event_id and paid_on, and nothing is sent otherwise", async () => {
     await withServer([], {}, async (call, mock) => {
       for (const name of ["confirm_payout", "reject_payout"]) {
-        for (const args of [{ holding_id: 5 }, { holding_id: 5, company_event_id: 77, paid_on: "2025-12-20" }]) {
+        for (const args of [{ holding_id: PLAIN_HOLDING }, { holding_id: PLAIN_HOLDING, company_event_id: 77, paid_on: "2025-12-20" }]) {
           const result = await call(name, args);
 
           assert.equal(result.isError, true, name);

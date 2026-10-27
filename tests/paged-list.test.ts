@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { MemoryCache, type Cache } from "../src/cache.js";
 import { CursorCodec } from "../src/cursor.js";
+import { walkPages } from "./pages.js";
 import { PagedLister, pageItems, serializedSize, type ItemPage, type ListSnapshot, type PagedCursorState } from "../src/paged-list.js";
 
 interface Row {
@@ -147,18 +148,8 @@ describe("PagedLister", () => {
     let fetches = 0;
     const fetch = async () => ({ items: rows(60), envelope: { marker: ++fetches } });
     const subject = lister(new MemoryCache(60_000, 20), 800);
-    const seen: number[] = [];
-    let page = await subject.list("q", fetch, { kind: "b" }, {});
-
-    for (;;) {
-      seen.push(...page.items.map((r) => r.id));
-
-      if (!page.pagination.has_more) {
-        break;
-      }
-
-      page = await subject.list("q", fetch, {}, { cursor: page.pagination.next_cursor });
-    }
+    const pages = await walkPages(await subject.list("q", fetch, { kind: "b" }, {}), (cursor) => subject.list("q", fetch, {}, { cursor }));
+    const seen = pages.flatMap((page) => page.items.map((r) => r.id));
 
     assert.equal(fetches, 1);
     assert.equal(seen.length, 30);

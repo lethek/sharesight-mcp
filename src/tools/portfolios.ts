@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { READ_ONLY, UPDATE, formatError, formatResult } from "./common.js";
+import { READ_ONLY, UPDATE, consolidated, formatError, formatResult, portfolioId } from "./common.js";
 
 export function registerPortfolioReadTools(server: McpServer, client: SharesightClient) {
   server.registerTool(
@@ -31,8 +31,8 @@ export function registerPortfolioReadTools(server: McpServer, client: Sharesight
       description: "Retrieves a single portfolio by ID",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true if the portfolio is consolidated"),
+        portfolio_id: portfolioId,
+        consolidated,
       }),
     },
     async (args) => {
@@ -52,8 +52,8 @@ export function registerPortfolioReadTools(server: McpServer, client: Sharesight
       description: "Retrieves user settings for a portfolio (chart type, grouping, etc.)",
       annotations: READ_ONLY,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
+        portfolio_id: portfolioId,
+        consolidated,
       }),
     },
     async (args) => {
@@ -75,8 +75,8 @@ export function registerPortfolioWriteTools(server: McpServer, client: Sharesigh
       description: "Updates user settings for a portfolio",
       annotations: UPDATE,
       inputSchema: z.object({
-        portfolio_id: z.number().describe("The portfolio ID"),
-        consolidated: z.boolean().optional().describe("Set to true for consolidated portfolio views"),
+        portfolio_id: portfolioId,
+        consolidated,
         portfolio_chart: z.string().optional().describe("Chart type: VALUE, VALUELINE, GROWTH, BENCHMARK, or HIDE"),
         holding_chart: z.string().optional().describe("Holding chart type: PRICE, HOLDING_VALUE, BENCHMARK, or HIDE"),
         combined: z.boolean().optional().describe("True to combine holdings in consolidated portfolios"),
