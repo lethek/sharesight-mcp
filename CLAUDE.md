@@ -17,6 +17,11 @@ This is an MCP (Model Context Protocol) server that wraps the Sharesight v3 API,
 sharesight-mcp/
 ├── src/
 │   ├── index.ts              # CLI entry point with the serve command
+│   ├── tools/                # Tool registration, one file per feature area
+│   │   ├── index.ts          # registerTools(): all read tools, then the write tools unless read-only
+│   │   ├── common.ts         # formatResult, formatError and the annotation constants
+│   │   ├── portfolios.ts, holdings.ts, custom-investments.ts, custom-investment-prices.ts,
+│   │   │   coupon-rates.ts, performance.ts, account.ts   # one area each, read tools and write tools
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime
@@ -28,7 +33,8 @@ sharesight-mcp/
 │   ├── sharesight-client.ts  # HTTP client for Sharesight API
 │   └── types.ts              # TypeScript interfaces for API types
 ├── tests/                    # Mirrors src/. Compiled with src/ into .test-build/ by npm test
-│   ├── *.test.ts             # node:test suites (oauth, client, startup, http, holdings-page, cursor, cache, tools, version)
+│   ├── *.test.ts             # node:test suites (oauth, client, startup, http, holdings-page, cursor, cache, tools, tool-groups, version)
+│   ├── stdio-session.ts      # withServer(): spawns the built server over stdio against a fresh mock Sharesight
 │   ├── test-helpers.ts       # stubFetch and response builders shared by the tests
 │   ├── server-env.ts         # inheritedEnv(): the parent environment minus the server's own settings, for tests that spawn it
 │   ├── mock-sharesight.ts    # Mock Sharesight API server for the tool tests
@@ -51,7 +57,10 @@ sharesight-mcp/
 The main CLI entry point with one command:
 - `sharesight-mcp serve` - Run the MCP server over stdio (default)
 - `sharesight-mcp serve --http` - Run it over Streamable HTTP (also `MCP_TRANSPORT=http`)
-Contains tool definitions using Zod schemas for validation. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside the shared `SharesightClient` and `HoldingsLister`, which `runServe` builds once.
+Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient` and `HoldingsLister`. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those two, which `runServe` builds once.
+
+### `src/tools/`
+Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.
 
 ### `src/http.ts`
 Wraps the SDK's `createMcpHandler` (from `@modelcontextprotocol/server`) with `toNodeHandler` (from `@modelcontextprotocol/node`) on `node:http`. Stateless, serves 2026-07-28 and 2025-era clients. Requires `MCP_AUTH_TOKEN` unless bound to loopback. Configured with `MCP_PORT`, `MCP_HOST` and `MCP_AUTH_TOKEN`; the generic `PORT` and `HOST` are deliberately not read. Stdio uses `serveStdio` so it also serves both protocol eras, and `serve` rejects unknown options before it contacts the token endpoint.
@@ -93,12 +102,13 @@ npm test        # Build src/ and tests/ into .test-build/ and run the node:test 
 
 2. **Add types** to `src/types.ts` if needed
 
-3. **Add tool** to `registerTools()` in `src/index.ts`:
+3. **Add tool** to the `register<Area>ReadTools` or `register<Area>WriteTools` function in `src/tools/<area>.ts`. A new area gets its own file, with its functions called from `src/tools/index.ts` (read tools before the `readOnly` return, write tools after it). Pick the annotation from `common.ts`, and add the name to the table in `tests/tool-groups.test.ts`:
    ```typescript
    server.registerTool(
      "new_tool",
      {
        description: "Description of what it does",
+       annotations: READ_ONLY,
        inputSchema: z.object({
          param: z.string().describe("..."),
        }),
@@ -142,7 +152,7 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 
 ## Testing
 
-`npm test` compiles `src/` and `tests/` together into `.test-build/` (`scripts/prepare-test-build.mjs` clears it first and copies `package.json` in, because `src/version.ts` reads it) and runs the suites with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). `tests/tools.test.ts` runs the server over stdio against `tests/mock-sharesight.ts`, a local HTTP stand-in for Sharesight reached through `SHARESIGHT_BASE_URL`, and covers the holdings list tools. Extend the mock when a test needs another endpoint. New tests go in `tests/`, named after the `src/` file they cover, and import from `../src/`. A test that spawns the server must build its environment from `inheritedEnv()`, so settings exported in a developer's shell cannot change the result. The other tool handlers in `src/index.ts` are not covered. Test those manually:
+`npm test` compiles `src/` and `tests/` together into `.test-build/` (`scripts/prepare-test-build.mjs` clears it first and copies `package.json` in, because `src/version.ts` reads it) and runs the suites with `node:test` and a stubbed `fetch`, so it needs no credentials or external network (some tests use a local loopback server). It covers token caching, the 401 retry, timeouts, the startup checks and the HTTP transport (auth, health check, protocol round trips). `tests/tools.test.ts` runs the server over stdio against `tests/mock-sharesight.ts`, a local HTTP stand-in for Sharesight reached through `SHARESIGHT_BASE_URL`, and covers the holdings list tools. Extend the mock when a test needs another endpoint. New tests go in `tests/`, named after the `src/` file they cover, and import from `../src/`. A test that spawns the server must build its environment from `inheritedEnv()`, so settings exported in a developer's shell cannot change the result. `tests/tool-groups.test.ts` covers the tool set, the annotations and read-only mode. The other tool handlers in `src/tools/` are not covered. Test those manually:
 
 1. Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET` env vars
 2. Run `node dist/index.js serve`
@@ -151,7 +161,7 @@ Set `SHARESIGHT_CLIENT_ID` and `SHARESIGHT_CLIENT_SECRET`. The server uses the O
 ## Common Tasks
 
 ### Update an existing tool
-1. Find the tool in `registerTools()` in `src/index.ts`
+1. Find the tool in `src/tools/`
 2. Modify the `inputSchema` as needed
 3. Update the handler if parameters changed
 4. Update client method in `src/sharesight-client.ts` if needed

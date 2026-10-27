@@ -63,63 +63,69 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **28 tools** covering all Sharesight v3 API endpoints:
+This server exposes **28 tools** covering all Sharesight v3 API endpoints, grouped by feature area. Each area lists its read tools first, then its write tools.
 
-### Portfolio Management
-| Tool | Description |
-|------|-------------|
-| `list_portfolios` | List all user portfolios with optional consolidated view |
-| `get_portfolio` | Get detailed portfolio information by ID |
-| `list_portfolio_holdings` | List the holdings within a specific portfolio, with [filtering and paging](#filtering-and-paging-holdings) |
-| `get_portfolio_user_setting` | Get user display preferences for a portfolio |
-| `update_portfolio_user_setting` | Update chart type, grouping, and other display settings |
+Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
-### Holdings Management
-| Tool | Description |
-|------|-------------|
-| `list_holdings` | List holdings across all portfolios, with [filtering and paging](#filtering-and-paging-holdings) |
-| `get_holding` | Get holding details with optional cost base and historical values |
-| `update_holding` | Update holding settings (DRP configuration) |
-| `delete_holding` | Remove a holding from a portfolio |
+### Portfolios
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_portfolios` | Read | List all user portfolios with optional consolidated view |
+| `get_portfolio` | Read | Get detailed portfolio information by ID |
+| `get_portfolio_user_setting` | Read | Get user display preferences for a portfolio |
+| `update_portfolio_user_setting` | Write | Update chart type, grouping, and other display settings |
 
-### Custom Investments
-| Tool | Description |
-|------|-------------|
-| `list_custom_investments` | List custom/unlisted investments |
-| `get_custom_investment` | Get custom investment details |
-| `create_custom_investment` | Create a new custom investment (property, bonds, etc.) |
-| `update_custom_investment` | Update custom investment properties |
-| `delete_custom_investment` | Remove a custom investment |
+### Holdings
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_holdings` | Read | List holdings across all portfolios, with [filtering and paging](#filtering-and-paging-holdings) |
+| `list_portfolio_holdings` | Read | List the holdings within a specific portfolio, with [filtering and paging](#filtering-and-paging-holdings) |
+| `get_holding` | Read | Get holding details with optional cost base and historical values |
+| `update_holding` | Write | Update holding settings (DRP configuration) |
+| `delete_holding` | Write | Remove a holding from a portfolio |
 
-### Custom Investment Prices
-| Tool | Description |
-|------|-------------|
-| `list_custom_investment_prices` | Get price history for a custom investment |
-| `create_custom_investment_price` | Add a new price entry |
-| `update_custom_investment_price` | Modify an existing price entry |
-| `delete_custom_investment_price` | Remove a price entry |
+### Custom investments
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_custom_investments` | Read | List custom/unlisted investments |
+| `get_custom_investment` | Read | Get custom investment details |
+| `create_custom_investment` | Write | Create a new custom investment (property, bonds, etc.) |
+| `update_custom_investment` | Write | Update custom investment properties |
+| `delete_custom_investment` | Write | Remove a custom investment |
 
-### Coupon Rates (Fixed Interest)
-| Tool | Description |
-|------|-------------|
-| `list_coupon_rates` | List interest rates for fixed interest investments |
-| `create_coupon_rate` | Add a new coupon rate |
-| `update_coupon_rate` | Modify a coupon rate |
-| `delete_coupon_rate` | Remove a coupon rate |
+### Custom investment prices
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_custom_investment_prices` | Read | Get price history for a custom investment |
+| `create_custom_investment_price` | Write | Add a new price entry |
+| `update_custom_investment_price` | Write | Modify an existing price entry |
+| `delete_custom_investment_price` | Write | Remove a price entry |
 
-### Performance Reports
-| Tool | Description |
-|------|-------------|
-| `get_performance_report` | Detailed performance breakdown with gains analysis |
-| `get_performance_index_chart` | Chart data for visualizing portfolio performance |
+### Coupon rates (fixed interest)
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_coupon_rates` | Read | List interest rates for fixed interest investments |
+| `create_coupon_rate` | Write | Add a new coupon rate |
+| `update_coupon_rate` | Write | Modify a coupon rate |
+| `delete_coupon_rate` | Write | Remove a coupon rate |
 
-### Other
-| Tool | Description |
-|------|-------------|
-| `list_countries` | Get Sharesight-supported countries and their settings |
-| `show_coupon_code` | View applied promotional coupon code |
-| `apply_coupon_code` | Apply a promotional coupon code |
-| `delete_coupon_code` | Remove applied coupon code |
+### Performance reports
+| Tool | Kind | Description |
+|------|------|-------------|
+| `get_performance_report` | Read | Detailed performance breakdown with gains analysis |
+| `get_performance_index_chart` | Read | Chart data for visualizing portfolio performance |
+
+### Account and reference
+| Tool | Kind | Description |
+|------|------|-------------|
+| `show_coupon_code` | Read | View applied promotional coupon code |
+| `list_countries` | Read | Get Sharesight-supported countries and their settings |
+| `apply_coupon_code` | Write | Apply a promotional coupon code |
+| `delete_coupon_code` | Write | Remove applied coupon code |
+
+### Read-only mode
+
+Set `MCP_READ_ONLY=true` to leave out every write tool, so the server offers only the 14 read tools. The write tools are not registered at all, so a client cannot call them even if it ignores the annotations. The value is `true` or `false`, in any case, and anything else stops the server at startup.
 
 ### Filtering and paging holdings
 
@@ -144,6 +150,7 @@ Sharesight offers no filter or paging options for holdings, so the server fetche
 |----------|---------|---------|
 | `MCP_MAX_RESPONSE_CHARS` | `30000` | Size limit for one page of a paged list, in characters (at least 5000). Keep it well under your client's tool output limit, which in Claude Code defaults to 25,000 tokens. The default is about a third of the size that exceeded that limit in testing. |
 | `MCP_CACHE_TTL_SECONDS` | `60` | How long the holdings list is cached for later pages. `0` turns the cache off. |
+| `MCP_READ_ONLY` | `false` | `true` leaves out the tools that create, change or delete data. See [Read-only mode](#read-only-mode). |
 | `MCP_CURSOR_SECRET` | random | Signs cursors. By default each process picks its own, so a cursor stops working after a restart and does not work on another instance. Set the same value on every instance to avoid that. |
 | `SHARESIGHT_BASE_URL` | `https://api.sharesight.com` | Replaces the Sharesight address, for tests or a proxy. It must be `https`, except that `http` is accepted for localhost, because your client secret is sent to this address. It cannot have a query or fragment. |
 
@@ -215,7 +222,7 @@ docker run -d --name sharesight-mcp -p 3000:3000 \
   ghcr.io/lethek/sharesight-mcp:latest
 ```
 
-The container runs in HTTP mode, listens on all interfaces and runs as a non-root user. It will not start without `MCP_AUTH_TOKEN`. See [HTTP Mode](#http-mode) for the other settings and for putting TLS in front of it. The image has a health check against `/healthz`.
+The container runs in HTTP mode, listens on all interfaces and runs as a non-root user. It will not start without `MCP_AUTH_TOKEN`. Add `-e MCP_READ_ONLY=true` to run it without the write tools. See [HTTP Mode](#http-mode) for the other settings and for putting TLS in front of it. The image has a health check against `/healthz`.
 
 ## Releasing
 

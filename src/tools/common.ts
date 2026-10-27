@@ -1,0 +1,26 @@
+import { errorMessage } from "../error-message.js";
+
+export function formatResult(result: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+}
+
+export function formatError(error: unknown) {
+  return { content: [{ type: "text" as const, text: `Error: ${errorMessage(error)}` }], isError: true };
+}
+
+/**
+ * MCP tool annotations. Clients use them to tell tools apart, for example to ask before running one that changes data. Every tool
+ * talks to Sharesight, so none of them sets openWorldHint (it defaults to true).
+ */
+
+/** Only reads data */
+export const READ_ONLY = { readOnlyHint: true } as const;
+
+/** Adds data. Repeating the call adds it again. */
+export const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false } as const;
+
+/** Changes data in place. Repeating the call with the same input leaves the same result. */
+export const UPDATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true } as const;
+
+/** Removes data */
+export const DELETE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true } as const;

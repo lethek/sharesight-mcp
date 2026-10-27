@@ -104,6 +104,12 @@ describe("serve startup", () => {
     }
   });
 
+  test("MCP_READ_ONLY=true says so at startup", async () => {
+    const result = await run(offlinePreload, { ...credentials, MCP_READ_ONLY: "true" }, "running on stdio");
+
+    assert.match(result.stderr, /Read-only mode: tools that create, change or delete data are not available/);
+  });
+
   test("--http listens on the configured port", async () => {
     const result = await run(offlinePreload, { ...credentials, MCP_PORT: "0" }, "running on http://127.0.0.1:", ["--http"]);
 
@@ -151,6 +157,7 @@ describe("serve startup", () => {
       ["a SHARESIGHT_BASE_URL with a query", { SHARESIGHT_BASE_URL: "https://proxy.example/sharesight?team=a" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
       ["a SHARESIGHT_BASE_URL with a fragment", { SHARESIGHT_BASE_URL: "https://proxy.example/sharesight#top" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
       ["a plain http SHARESIGHT_BASE_URL for another host", { SHARESIGHT_BASE_URL: "http://api.sharesight.com" }, [], /SHARESIGHT_BASE_URL must be an https URL/],
+      ["an MCP_READ_ONLY that is not true or false", { MCP_READ_ONLY: "yes" }, [], /MCP_READ_ONLY must be "true" or "false"/],
       ["--http together with MCP_TRANSPORT=stdio", { MCP_TRANSPORT: "stdio" }, ["--http"], /--http conflicts with MCP_TRANSPORT=stdio/],
     ];
 
