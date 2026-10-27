@@ -78,14 +78,14 @@ export async function startMockSharesight(holdings: object[]): Promise<MockShare
       return;
     }
 
-    // Trades and payouts: any write is accepted, and the body is kept so a test can see what the server sent
-    if (/^\/api\/v3\/(trades\.json|trades\/\d+\.json|holdings\/\d+\/payouts|payouts\/\d+)$/.test(path) && ["POST", "PUT", "DELETE"].includes(req.method ?? "")) {
+    // Trades, payouts and portfolio settings: any write is accepted, and the body is kept so a test can see what the server sent
+    if (/^\/api\/v3\/(trades\.json|trades\/\d+\.json|holdings\/\d+\/payouts|payouts\/\d+|portfolios\/\d+\/user_setting)$/.test(path) && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method ?? "")) {
       entry.body = text ? JSON.parse(text) : undefined;
       send(res, 200, { api_transaction: { id: 1 } });
       return;
     }
 
-    if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|overview|totals|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+)$/.test(path)) {
+    if (req.method === "GET" && /^\/api\/v3\/(portfolios\/\d+\/(trades\.json|reports|benchmark\.json|value|portfolio_value_data\.json)|holdings\/\d+\/(trades\.json|payouts)|trades\/\d+\.json|payouts\/\d+)$/.test(path)) {
       send(res, 200, { api_transaction: { id: 1 }, query: new URL(req.url ?? "/", "http://localhost").search });
       return;
     }

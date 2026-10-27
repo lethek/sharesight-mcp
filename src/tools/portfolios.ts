@@ -89,7 +89,7 @@ export function registerPortfolioWriteTools(server: McpServer, client: Sharesigh
         const { portfolio_id, consolidated, ...settings } = args;
         const result = await client.updatePortfolioUserSetting(
           portfolio_id,
-          { portfolio_user_settings: settings },
+          { portfolio_user_setting: settings },
           consolidated
         );
 

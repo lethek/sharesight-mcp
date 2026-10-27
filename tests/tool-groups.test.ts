@@ -38,8 +38,6 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
       "get_performance_report",
       "get_performance_index_chart",
       "list_portfolio_reports",
-      "get_portfolio_overview",
-      "get_portfolio_totals",
       "get_portfolio_benchmark",
       "get_portfolio_value",
       "get_portfolio_value_data",
@@ -70,7 +68,7 @@ describe("tool groups", () => {
   test("the server offers exactly the grouped tools", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       assert.deepEqual(names(await listTools(request)), [...READS, ...WRITES].sort());
-      assert.equal(READS.length + WRITES.length, 45);
+      assert.equal(READS.length + WRITES.length, 43);
     });
   });
 

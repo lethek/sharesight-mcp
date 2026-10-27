@@ -685,7 +685,7 @@ export class SharesightClient {
     consolidated?: boolean
   ): Promise<PortfolioUserSettingResponse> {
     return this.request<PortfolioUserSettingResponse>(
-      "PUT",
+      "PATCH",
       `/portfolios/${portfolioId}/user_setting`,
       data,
       consolidated !== undefined ? { consolidated } : undefined
@@ -791,18 +791,8 @@ export class SharesightClient {
   }
 
   /** Lists the reports saved for a portfolio. */
-  async listPortfolioReports(portfolioId: number): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/reports`);
-  }
-
-  /** Retrieves the holdings overview of a portfolio: values and gains per holding, optionally grouped. */
-  async getPortfolioOverview(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/overview`, undefined, options, REPORT_REQUEST_TIMEOUT_MS);
-  }
-
-  /** Retrieves the totals of a portfolio. */
-  async getPortfolioTotals(portfolioId: number, options?: QueryParams): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/totals`, undefined, options);
+  async listPortfolioReports(portfolioId: number, type: "tax" | "tools"): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/portfolios/${portfolioId}/reports`, undefined, { type });
   }
 
   /** Compares a portfolio with a benchmark instrument. */
@@ -834,13 +824,13 @@ export class SharesightClient {
     return this.request<PassThroughResponse>("GET", `/trades/${id}.json`);
   }
 
-  /** Creates a trade. The body is flat; an attachment goes in as base64 with its file name. */
+  /** Creates a trade. Sharesight wants the fields under a `trade` key; an attachment goes in as base64 with its file name. */
   async createTrade(data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("POST", "/trades.json", data, undefined, writeTimeout(data));
+    return this.request<PassThroughResponse>("POST", "/trades.json", { trade: data }, undefined, writeTimeout(data));
   }
 
   async updateTrade(id: number, data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("PUT", `/trades/${id}.json`, data, undefined, writeTimeout(data));
+    return this.request<PassThroughResponse>("PUT", `/trades/${id}.json`, { trade: data }, undefined, writeTimeout(data));
   }
 
   async deleteTrade(id: number): Promise<BaseResponse> {
@@ -858,11 +848,11 @@ export class SharesightClient {
 
   /** Creates a payout. The body is flat; an attachment goes in as base64 with its file name. */
   async createPayout(holdingId: number, data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("POST", `/holdings/${holdingId}/payouts`, data, undefined, writeTimeout(data));
+    return this.request<PassThroughResponse>("POST", `/holdings/${holdingId}/payouts`, { payout: data }, undefined, writeTimeout(data));
   }
 
   async updatePayout(id: number, data: object): Promise<PassThroughResponse> {
-    return this.request<PassThroughResponse>("PUT", `/payouts/${id}`, data, undefined, writeTimeout(data));
+    return this.request<PassThroughResponse>("PUT", `/payouts/${id}`, { payout: data }, undefined, writeTimeout(data));
   }
 
   async deletePayout(id: number): Promise<BaseResponse> {

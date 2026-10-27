@@ -75,7 +75,7 @@ describe("attachment_path over HTTP", () => {
         const ok = await call("create_trade", { holding_id: 1, attachment_path: "cn.txt" });
 
         assert.equal(ok.isError, false, ok.text);
-        assert.equal(requests.filter((r) => r.body !== undefined).at(-1)!.body.attachment, Buffer.from(CONTENT).toString("base64"));
+        assert.equal(requests.filter((r) => r.body !== undefined).at(-1)!.body.trade.attachment, Buffer.from(CONTENT).toString("base64"));
 
         const refused = await call("create_trade", { holding_id: 1, attachment_path: "../outside.txt" });
 

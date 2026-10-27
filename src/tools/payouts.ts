@@ -31,23 +31,23 @@ const typeDetails = Object.fromEntries(
   ])
 );
 
+const reinvestmentTrade = z.object({
+  reinvested: z.boolean().describe("true to create or update a DRP trade, false to remove it"),
+  quantity: z.number().describe("Units reinvested"),
+  price: z.number().optional().describe("DRP price per unit, in instrument currency"),
+  exchange_rate: z.number().optional().describe("The DRP's exchange rate"),
+  balance_brought_forward: z.number().optional().describe("DRP balance brought forward, for plans that round down and track a balance"),
+});
+
+/** Sharesight rejects a payout write without reinvestment_trade.reinvested and .quantity, so a create without a DRP sends this. */
+const NO_REINVESTMENT = { reinvested: false, quantity: 0 };
+
 const payoutFields = {
-  paid_on: z.string().describe("Payout date YYYY-MM-DD"),
   goes_ex_on: z.string().optional().describe("Ex date YYYY-MM-DD"),
   exchange_rate: z.number().optional().describe("Exchange rate as portfolio currency / payout currency"),
   non_taxable: z.boolean().optional().describe("true if the payout is not taxable"),
   comments: z.string().optional().describe("Comments on the payout"),
   send_to_xero: z.boolean().optional().describe("true to sync the payout with Xero"),
-  reinvestment_trade: z
-    .object({
-      reinvested: z.boolean().describe("true to create or update a DRP trade, false to remove it"),
-      quantity: z.number().describe("Units reinvested"),
-      price: z.number().optional().describe("DRP price per unit, in instrument currency"),
-      exchange_rate: z.number().optional().describe("The DRP's exchange rate"),
-      balance_brought_forward: z.number().optional().describe("DRP balance brought forward, for plans that round down and track a balance"),
-    })
-    .optional()
-    .describe("Details of the DRP trade when the payout is reinvested"),
   ...typeDetails,
 };
 
@@ -100,13 +100,15 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
       inputSchema: z.object({
         holding_id: z.number().describe("The holding ID"),
         type: z.enum(PAYOUT_TYPES).describe("The payout type"),
+        paid_on: z.string().describe("Payout date YYYY-MM-DD"),
+        reinvestment_trade: reinvestmentTrade.optional().describe("Details of the DRP trade when the payout is reinvested. Left out, the payout is not reinvested."),
         ...payoutFields,
         ...attachmentInput,
       }),
     },
-    async ({ holding_id, ...fields }) => {
+    async ({ holding_id, reinvestment_trade = NO_REINVESTMENT, ...fields }) => {
       try {
-        return formatResult(await client.createPayout(holding_id, await withAttachment(fields, paths)));
+        return formatResult(await client.createPayout(holding_id, await withAttachment({ ...fields, reinvestment_trade }, paths)));
       } catch (error) {
         return formatError(error);
       }
@@ -120,6 +122,10 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
       annotations: OVERWRITE,
       inputSchema: z.object({
         payout_id: z.number().describe("The payout ID"),
+        paid_on: z.string().optional().describe("Payout date YYYY-MM-DD"),
+        reinvestment_trade: reinvestmentTrade.describe(
+          "Always required by Sharesight. Send the payout's current DRP details, or reinvested false to leave it without one: false removes an existing DRP trade."
+        ),
         ...payoutFields,
         confirm_source: z.literal("pro_rata").optional().describe("The source of the confirmation, when confirming a payout"),
         ...attachmentInput,

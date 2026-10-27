@@ -63,7 +63,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **45 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: labels, file imports, connections, the watchlist, adjustments, bulk prices, and the lookups other than countries. Each area lists its read tools first, then its write tools.
+This server exposes **43 tools** covering most Sharesight v3 API endpoints, grouped by feature area. Not covered: labels, file imports, connections, the watchlist, adjustments, bulk prices, and the lookups other than countries. Each area lists its read tools first, then its write tools.
 
 Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
@@ -133,9 +133,7 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 |------|------|-------------|
 | `get_performance_report` | Read | Detailed performance breakdown with gains analysis |
 | `get_performance_index_chart` | Read | Chart data for visualizing portfolio performance |
-| `list_portfolio_reports` | Read | List the reports saved for a portfolio |
-| `get_portfolio_overview` | Read | Value and gains of each holding, optionally grouped |
-| `get_portfolio_totals` | Read | Portfolio totals |
+| `list_portfolio_reports` | Read | List the tax or tools reports saved for a portfolio |
 | `get_portfolio_benchmark` | Read | Compare a portfolio with a benchmark instrument |
 | `get_portfolio_value` | Read | Current portfolio value, optionally in another currency |
 | `get_portfolio_value_data` | Read | Portfolio value over time with the price difference |

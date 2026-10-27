@@ -163,7 +163,7 @@ describe("a data root", () => {
 describe("attachments through the tools", () => {
   const lastBody = (mock: { requests: Array<{ method: string; path: string; body?: any }> }) => mock.requests.filter((r) => r.body !== undefined).at(-1)!;
 
-  test("create_trade sends a flat body with the attachment", async () => {
+  test("create_trade nests the fields under trade, with the attachment", async () => {
     await withServer([], {}, async (call, mock) => {
       const result = await call("create_trade", { portfolio_id: 7, instrument_id: 3, description_code: "BUY", quantity: 2, price: 9.5, transaction_date: "2024-01-02", attachment_base64: BASE64, attachment_filename: "cn.txt" });
 
@@ -171,7 +171,7 @@ describe("attachments through the tools", () => {
       assert.deepEqual(lastBody(mock), {
         method: "POST",
         path: "/api/v3/trades.json",
-        body: { portfolio_id: 7, instrument_id: 3, description_code: "BUY", quantity: 2, price: 9.5, transaction_date: "2024-01-02", attachment: BASE64, attachment_filename: "cn.txt" },
+        body: { trade: { portfolio_id: 7, instrument_id: 3, description_code: "BUY", quantity: 2, price: 9.5, transaction_date: "2024-01-02", attachment: BASE64, attachment_filename: "cn.txt" } },
       });
     });
   });
@@ -180,7 +180,7 @@ describe("attachments through the tools", () => {
     await withServer([], {}, async (call, mock) => {
       await call("update_trade", { trade_id: 12, comments: "x", remove_attachment: true });
 
-      assert.deepEqual(lastBody(mock), { method: "PUT", path: "/api/v3/trades/12.json", body: { comments: "x", attachment: null, attachment_filename: null } });
+      assert.deepEqual(lastBody(mock), { method: "PUT", path: "/api/v3/trades/12.json", body: { trade: { comments: "x", attachment: null, attachment_filename: null } } });
     });
   });
 
@@ -197,7 +197,7 @@ describe("attachments through the tools", () => {
         assert.deepEqual(lastBody(mock), {
           method: "POST",
           path: "/api/v3/holdings/4/payouts",
-          body: { type: "au_local_dividend", paid_on: "2024-03-01", au_local_dividend: { trust: false, franked_amount: 10 }, attachment: BASE64, attachment_filename: "statement.pdf" },
+          body: { payout: { type: "au_local_dividend", paid_on: "2024-03-01", au_local_dividend: { trust: false, franked_amount: 10 }, reinvestment_trade: { reinvested: false, quantity: 0 }, attachment: BASE64, attachment_filename: "statement.pdf" } },
         });
       });
     } finally {
@@ -216,7 +216,7 @@ describe("attachments through the tools", () => {
         const ok = await call("create_trade", { holding_id: 1, attachment_path: "cn.txt" });
 
         assert.equal(ok.isError, false, ok.text);
-        assert.equal(lastBody(mock).body.attachment, BASE64);
+        assert.equal(lastBody(mock).body.trade.attachment, BASE64);
 
         const sent = mock.requests.length;
         const refused = await call("create_trade", { holding_id: 1, attachment_path: "../outside.txt" });
@@ -235,6 +235,36 @@ describe("attachments through the tools", () => {
       const result = await call("list_trades", { portfolio_id: 7, start_date: "2024-01-01" });
 
       assert.equal(result.payload.query, "?start_date=2024-01-01");
+    });
+  });
+
+  test("update_payout needs reinvestment_trade but not paid_on", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const missing = await call("update_payout", { payout_id: 9, comments: "x" });
+
+      assert.equal(missing.isError, true);
+
+      const result = await call("update_payout", { payout_id: 9, comments: "x", reinvestment_trade: { reinvested: false, quantity: 0 } });
+
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(lastBody(mock), { method: "PUT", path: "/api/v3/payouts/9", body: { payout: { comments: "x", reinvestment_trade: { reinvested: false, quantity: 0 } } } });
+    });
+  });
+
+  test("update_portfolio_user_setting PATCHes the settings under portfolio_user_setting", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("update_portfolio_user_setting", { portfolio_id: 7, grouping: "market", combined: false });
+
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(lastBody(mock), { method: "PATCH", path: "/api/v3/portfolios/7/user_setting", body: { portfolio_user_setting: { grouping: "market", combined: false } } });
+    });
+  });
+
+  test("list_portfolio_reports sends the report type", async () => {
+    await withServer([], {}, async (call) => {
+      const result = await call("list_portfolio_reports", { portfolio_id: 7, type: "tax" });
+
+      assert.equal(result.payload.query, "?type=tax");
     });
   });
 

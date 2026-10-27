@@ -905,7 +905,7 @@ export interface UpdateHoldingRequest {
  */
 export interface UpdatePortfolioUserSettingRequest {
   /** The settings to update */
-  portfolio_user_settings: Partial<PortfolioUserSetting>;
+  portfolio_user_setting: Partial<PortfolioUserSetting>;
 }
 
 /**
