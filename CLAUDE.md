@@ -22,6 +22,7 @@ sharesight-mcp/
 │   ├── types.ts              # TypeScript interfaces for API types
 │   ├── *.test.ts             # node:test suites (oauth, client, startup)
 │   └── test-helpers.ts       # stubFetch and response builders shared by the tests
+├── .github/workflows/ci.yml  # Build and test on PRs and main; reusable via workflow_call
 ├── scripts/                  # Build helpers (clean-test-build.mjs, used by npm test)
 ├── tsconfig.build.json       # Used by npm run build; leaves the tests out of dist/
 ├── tsconfig.test.json        # Builds everything, tests included, into .test-build/ (gitignored)
