@@ -41,6 +41,17 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     read: ["list_labels", "get_label"],
     write: ["create_label", "update_label", "delete_label", "delete_holding_label"],
   },
+  "cash accounts": {
+    read: ["list_cash_accounts", "get_cash_account", "list_cash_account_transactions"],
+    write: [
+      "create_cash_account",
+      "update_cash_account",
+      "delete_cash_account",
+      "create_cash_account_transaction",
+      "update_cash_account_transaction",
+      "delete_cash_account_transaction",
+    ],
+  },
   "unconfirmed payouts and trades": {
     read: ["list_unconfirmed_payouts", "list_unconfirmed_trades", "list_rejected_trades"],
     write: ["confirm_payout", "reject_payout"],
@@ -61,7 +72,7 @@ const AREAS: Record<string, { read: string[]; write: string[] }> = {
     write: [],
   },
   "account and reference": {
-    read: ["show_coupon_code", "get_my_user", "list_user_instruments", "list_countries"],
+    read: ["show_coupon_code", "get_my_user", "list_user_instruments", "list_groups", "list_countries"],
     write: ["apply_coupon_code", "delete_coupon_code"],
   },
 };
@@ -110,7 +121,7 @@ describe("tool groups", () => {
   test("the server offers exactly the grouped tools", async () => {
     await withServer([], {}, async (_call, _mock, request) => {
       assert.deepEqual(names(await listTools(request)), [...READS, ...WRITES].sort());
-      assert.equal(READS.length + WRITES.length, 65);
+      assert.equal(READS.length + WRITES.length, 75);
     });
   });
 

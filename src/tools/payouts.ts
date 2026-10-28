@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
-import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult, holdingId } from "./common.js";
+import { byDate, listWhole, type WholeLister } from "../whole-list.js";
+import { CREATE, DELETE, OVERWRITE, PAGING_HELP, READ_ONLY, formatError, formatResult, holdingId, pagingInput } from "./common.js";
 
 const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but this server cannot download the file itself.";
 
@@ -51,20 +52,23 @@ const payoutFields = {
   ...typeDetails,
 };
 
-export function registerPayoutReadTools(server: McpServer, client: SharesightClient) {
+export function registerPayoutReadTools(server: McpServer, client: SharesightClient, lists: WholeLister) {
   server.registerTool(
     "list_payouts",
     {
-      description: `Retrieves the payouts (dividends and interest) of a holding. ${ATTACHMENT_HELP}`,
+      description: `Retrieves the payouts (dividends and interest) of a holding. ${ATTACHMENT_HELP} ${PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
         holding_id: holdingId,
         use_date: z.enum(["paid_on", "ex_date"]).optional().describe("Which payout date to filter on"),
+        ...pagingInput,
       }),
     },
-    async ({ holding_id, ...options }) => {
+    async ({ holding_id, limit, cursor, ...options }) => {
       try {
-        return formatResult(await client.listPayouts(holding_id, options));
+        const query = { tool: "list_payouts", inputs: { holding_id, ...options }, key: "payouts", fetch: () => client.listPayouts(holding_id, options), order: byDate("paid_on", "desc") };
+
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

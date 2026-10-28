@@ -968,4 +968,48 @@ export class SharesightClient {
   async setPayoutStateV2(data: object): Promise<PassThroughResponse> {
     return this.request<PassThroughResponse>("POST", "/api/v2/payouts.json", { payout: data });
   }
+
+  /** Lists the custom groups and the built-in ways of grouping a user can report on. */
+  async listGroups(): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", "/api/v2/groups.json");
+  }
+
+  /** Lists the cash accounts of one portfolio, or of all of them. */
+  async listCashAccounts(portfolioId?: number, options?: QueryParams): Promise<PassThroughResponse> {
+    const endpoint = portfolioId === undefined ? "/api/v2/cash_accounts.json" : `/api/v2/portfolios/${portfolioId}/cash_accounts.json`;
+
+    return this.request<PassThroughResponse>("GET", endpoint, undefined, options);
+  }
+
+  async getCashAccount(id: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/cash_accounts/${id}.json`, undefined, options);
+  }
+
+  async createCashAccount(portfolioId: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/api/v2/portfolios/${portfolioId}/cash_accounts.json`, { cash_account: data });
+  }
+
+  async updateCashAccount(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/api/v2/cash_accounts/${id}.json`, data);
+  }
+
+  async deleteCashAccount(id: number): Promise<NoContent> {
+    return this.request<NoContent>("DELETE", `/api/v2/cash_accounts/${id}.json`);
+  }
+
+  async listCashAccountTransactions(cashAccountId: number, options?: QueryParams): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("GET", `/api/v2/cash_accounts/${cashAccountId}/cash_account_transactions.json`, undefined, options);
+  }
+
+  async createCashAccountTransaction(cashAccountId: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("POST", `/api/v2/cash_accounts/${cashAccountId}/cash_account_transactions.json`, data);
+  }
+
+  async updateCashAccountTransaction(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/api/v2/cash_account_transactions/${id}.json`, data);
+  }
+
+  async deleteCashAccountTransaction(id: number): Promise<NoContent> {
+    return this.request<NoContent>("DELETE", `/api/v2/cash_account_transactions/${id}.json`);
+  }
 }

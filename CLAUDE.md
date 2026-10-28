@@ -23,7 +23,7 @@ sharesight-mcp/
 │   │   ├── attachments.ts    # Attachment inputs and withAttachment(): base64 or file path to Sharesight's attachment fields
 │   │   ├── portfolios.ts, holdings.ts, trades.ts, payouts.ts, custom-investments.ts, custom-investment-prices.ts,
 │   │   │   coupon-rates.ts, adjustments.ts, labels.ts, performance.ts, reports.ts (v2 reports), confirmations.ts (v2 unconfirmed
-│   │   │   payouts and trades), account.ts   # one area each, read tools and write tools
+│   │   │   payouts and trades), cash-accounts.ts (v2), account.ts   # one area each, read tools and write tools
 │   ├── http.ts               # Streamable HTTP server (bearer auth, /healthz) for serve --http
 │   ├── error-message.ts      # errorMessage(): message of a thrown value
 │   ├── version.ts            # VERSION, read from package.json at runtime
@@ -31,6 +31,7 @@ sharesight-mcp/
 │   ├── holdings-page.ts      # Holding filters and ordering
 │   ├── holdings-list.ts      # HoldingsLister: PagedLister for list_holdings / list_portfolio_holdings
 │   ├── unconfirmed-list.ts   # createUnconfirmedLister(): PagedLister for the v2 unconfirmed payout and trade lists
+│   ├── whole-list.ts         # createWholeLister() and listWhole(): PagedLister for lists Sharesight returns whole (trades, payouts, cash transactions, instruments, countries)
 │   ├── cursor.ts             # CursorCodec: signed, stateless paging cursors
 │   ├── cache.ts              # Cache interface and MemoryCache (TTL, entry cap)
 │   ├── oauth.ts              # OAuth 2.0 client credentials token management
@@ -61,7 +62,7 @@ sharesight-mcp/
 The main CLI entry point with one command:
 - `sharesight-mcp serve` - Run the MCP server over stdio (default)
 - `sharesight-mcp serve --http` - Run it over Streamable HTTP (also `MCP_TRANSPORT=http`)
-Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient`, `HoldingsLister` and unconfirmed lister. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those, which `runServe` builds once. To page another list that Sharesight returns whole, give `PagedLister` a `matches` predicate (run on the fetched list before anything is cached) and an optional `compare`, as `unconfirmed-list.ts` does; keep the query that decides what to fetch in the `scope` string.
+Reads the serve settings (`MCP_READ_ONLY` among them) and builds the shared `SharesightClient`, `HoldingsLister`, unconfirmed lister and whole-list lister. A new server instance is built per HTTP request, so `registerTools` must stay cheap and keep no state outside those, which `runServe` builds once. To page another list that Sharesight returns whole, add `pagingInput` to the tool and return `listWhole(lists, scope, key, fetch, { cursor, limit })` from `whole-list.ts`, with the tool name and every input that decides what to fetch in the `scope` string, and a sort as the last argument if Sharesight's order is not stable. A list that needs filtering of its own, as the unconfirmed lists do, gives `PagedLister` a `matches` predicate (run on the fetched list before anything is cached) and an optional `compare`, as `unconfirmed-list.ts` does.
 
 ### `src/tools/`
 Tool definitions using Zod schemas, one file per feature area. Each file exports a `register<Area>ReadTools` function and, if the area has any, a `register<Area>WriteTools` function. `tools/index.ts` calls every read function, then returns early when `readOnly` is set, so read-only mode never registers a write tool. Every tool has `annotations` from `common.ts`: `READ_ONLY`, `CREATE`, `UPDATE` or `DELETE`. Trade and payout create/update tools take a `PathPolicy` because `attachment_path` reads a file on the server's machine: with `MCP_DATA_ROOT` set, paths are relative to it and confined to it (symlinks resolved first), over both transports; without it, only stdio may read any path (`unrestricted`) and HTTP refuses. v3 has no attachment download endpoint. v2 documents `GET /documents/:id.json` (the id is the v3 attachment id), but in live tests (October 2026) it returned a Cloudflare 502 for every existing document and a normal 404 for a missing one, with the same token that reads v2 trades, so no download tool is exposed. The v1 Connect API has no document endpoint. `tests/tool-groups.test.ts` holds the table of expected tool names and checks the annotations against the name prefix.
@@ -146,7 +147,7 @@ The git tag is the only place a release version is written. `package.json` holds
 - Pagination: cursor-based with `page` and `per_page`
 
 ### Sharesight API v2
-A few tools use v2, because v3 lacks them: the capital gains, unrealised CGT, diversity and valuation reports, `my_user`, `user_instruments`, and the unconfirmed payout and trade lists with payout confirm and reject. The same OAuth token works. A client method reaches v2 by passing an endpoint that starts with `/api/v2/`. The v2 docs are at `https://portfolio.sharesight.com/api/2/doc/api_data.json`. Do not add a trade confirm or reject tool on `POST /api/v2/trades.json`: live tests showed it creates a new confirmed trade instead, even with `state: "rejected"`.
+A few tools use v2, because v3 lacks them: the capital gains, unrealised CGT, diversity and valuation reports, `my_user`, `user_instruments`, `groups`, cash accounts and their transactions, and the unconfirmed payout and trade lists with payout confirm and reject. The same OAuth token works. A client method reaches v2 by passing an endpoint that starts with `/api/v2/`. The v2 docs are at `https://portfolio.sharesight.com/api/2/doc/api_data.json`. Do not add a trade confirm or reject tool on `POST /api/v2/trades.json`: live tests showed it creates a new confirmed trade instead, even with `state: "rejected"`.
 
 ### Error Handling
 The client throws errors for non-2xx responses. The MCP handler catches these and returns `isError: true` responses.

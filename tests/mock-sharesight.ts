@@ -31,7 +31,9 @@ export const HOLDING_WITH_PENDING_REINVESTMENT = 5; // an unconfirmed trade for 
 export const HOLDING_WITH_NOTHING_PENDING = 7;
 export const HOLDING_WITH_PENDING_INTEREST = 8; // an unconfirmed interest payout on 2025-12-20, gone once a rejection is posted
 export const HOLDING_WITH_STUCK_INTEREST = 9; // an unconfirmed interest payout on 2025-12-20 that a rejection does not remove
-export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, enough to need several pages
+export const CASH_ACCOUNT_WITH_LONG_HISTORY = 99; // 80 transactions, enough to need several pages
+export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, and 80 trades, enough to need several pages
+export const HOLDING_WITH_LONG_HISTORY = 99; // 80 trades and 80 payouts
 
 async function readBody(req: IncomingMessage): Promise<string> {
   let body = "";
@@ -74,6 +76,18 @@ const echoQuery = ({ search, send }: Call) => send(200, { api_transaction: { id:
 
 const holdingId = (path: string) => Number(/\/holdings\/(\d+)\//.exec(path)?.[1]);
 
+/** Cash transactions oldest first, which is not the order the tool should return them in */
+const longTransactionList = () =>
+  Array.from({ length: 80 }, (_, i) => ({ id: 1000 + i, date_time: `2026-01-01T00:00:${String(i).padStart(2, "0")}.000Z`, description: "d".repeat(150), amount: i }));
+
+/** Items with ids from `firstId` up and dates that rise with the id, in numbers that need several pages */
+const longList = (count: number, firstId: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const date = `2020-01-01T00:00:${String(i).padStart(2, "0")}`;
+
+    return { id: firstId + i, transaction_date: date, paid_on: date, comments: "x".repeat(150) };
+  });
+
 /** Confirmed and unconfirmed payouts, newest first, in numbers that need several pages */
 const longPayoutList = () =>
   Array.from({ length: 120 }, (_, i) =>
@@ -104,6 +118,27 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
       methods: WRITES,
       path: /^\/api\/v3\/(trades\.json|trades\/\d+\.json|holdings\/\d+\/payouts|payouts\/\d+|portfolios\/\d+\/user_setting|custom_investments\/\d+\/adjustments|adjustments\/\d+|portfolios\/\d+\/labels(\/[^/]+)?)$/,
       handle: acceptWrite,
+    },
+    // Lists Sharesight returns whole, long enough to need several pages. Each reply carries links, like Sharesight's.
+    {
+      methods: ["GET"],
+      path: /^\/api\/v3\/(portfolios\/99\/trades\.json|holdings\/99\/(trades\.json|payouts)|countries)$/,
+      handle: ({ path, search, send }) => {
+        const [key, firstId] = path.endsWith("/countries") ? ["countries", 3000] : path.endsWith("/payouts") ? ["payouts", 2000] : ["trades", 1000];
+
+        send(200, { [key]: longList(80, firstId as number), query: search, links: { self: "mock" } });
+      },
+    },
+    {
+      methods: ["GET"],
+      path: /^\/api\/v2\/user_instruments\.json$/,
+      handle: ({ send }) => send(200, { instruments: longList(80, 4000), links: { self: "mock" } }),
+    },
+    // Short trade lists echo the query, and a payouts reply has no list, like a changed Sharesight reply would
+    {
+      methods: ["GET"],
+      path: /^\/api\/v3\/(portfolios\/\d+|holdings\/\d+)\/trades\.json$/,
+      handle: ({ search, send }) => send(200, { trades: [], query: search }),
     },
     {
       methods: ["GET"],
@@ -165,9 +200,34 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
       path: /^\/api\/v2\/portfolios\/\d+\/trades\.json$/,
       handle: ({ send }) => send(200, { trades: [{ id: 2, state: "confirmed" }, { id: null, state: "unconfirmed", company_event_id: 88 }, { id: null, state: "unconfirmed", company_event_id: 89 }] }),
     },
+    // v2: cash accounts and their transactions. Deleting answers 204 with no body, like Sharesight.
     {
       methods: ["GET"],
-      path: /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|user_instruments\.json|holdings\/\d+\/rejected_trades\.json)$/,
+      path: /^\/api\/v2\/cash_accounts\/(\d+)\/cash_account_transactions\.json$/,
+      handle: ({ path, search, send }) => {
+        const long = path.includes(`/cash_accounts/${CASH_ACCOUNT_WITH_LONG_HISTORY}/`);
+
+        send(200, { cash_account_transactions: long ? longTransactionList() : [], query: search, links: { self: "mock" } });
+      },
+    },
+    {
+      methods: ["GET"],
+      path: /^\/api\/v2\/(groups\.json|cash_accounts\.json|portfolios\/\d+\/cash_accounts\.json|cash_accounts\/\d+\.json)$/,
+      handle: echoQuery,
+    },
+    {
+      methods: ["POST", "PUT"],
+      path: /^\/api\/v2\/(portfolios\/\d+\/cash_accounts\.json|cash_accounts\/\d+\.json|cash_accounts\/\d+\/cash_account_transactions\.json|cash_account_transactions\/\d+\.json)$/,
+      handle: acceptWrite,
+    },
+    {
+      methods: ["DELETE"],
+      path: /^\/api\/v2\/(cash_accounts|cash_account_transactions)\/\d+\.json$/,
+      handle: ({ send }) => send(204),
+    },
+    {
+      methods: ["GET"],
+      path: /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|holdings\/\d+\/rejected_trades\.json)$/,
       handle: ({ search, send }) => send(200, { query: search }),
     },
   ];

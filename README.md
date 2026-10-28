@@ -63,7 +63,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 ## Features
 
-This server exposes **65 tools** covering most Sharesight v3 API endpoints plus the v2 endpoints that v3 lacks, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, cash accounts, portfolio and membership management, and the lookups other than countries. Each area lists its read tools first, then its write tools.
+This server exposes **75 tools** covering most Sharesight v3 API endpoints plus the v2 endpoints that v3 lacks, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, portfolio and membership management, holding merges, and the lookups other than countries and groups. Each area lists its read tools first, then its write tools.
 
 Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
 
@@ -87,8 +87,8 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 ### Trades
 | Tool | Kind | Description |
 |------|------|-------------|
-| `list_trades` | Read | List the trades in a portfolio, by date range or unique identifier |
-| `list_holding_trades` | Read | List the trades of a holding |
+| `list_trades` | Read | List the trades in a portfolio, by date range or unique identifier, in pages |
+| `list_holding_trades` | Read | List the trades of a holding, in pages |
 | `get_trade` | Read | Get a trade by ID |
 | `create_trade` | Write | Create a trade, optionally with an [attachment](#attachments) |
 | `update_trade` | Write | Update a trade, or replace or remove its attachment |
@@ -97,7 +97,7 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 ### Payouts
 | Tool | Kind | Description |
 |------|------|-------------|
-| `list_payouts` | Read | List the payouts (dividends and interest) of a holding |
+| `list_payouts` | Read | List the payouts (dividends and interest) of a holding, in pages |
 | `get_payout` | Read | Get a payout by ID |
 | `create_payout` | Write | Create a payout, optionally with an [attachment](#attachments) |
 | `update_payout` | Write | Update a payout, or replace or remove its attachment |
@@ -164,6 +164,21 @@ Dividend payouts are named by `company_event_id`, and interest payouts, which ha
 
 Confirming or rejecting a payout also settles its dividend reinvestment trade. When a holding has one pending, `confirm_payout` refuses until you pass `reinvestment` (to keep the trade) or `skip_reinvestment` (to drop it), because confirming without either removes the trade. Sharesight answers a rejection by `paid_on` with a 500 error even though it rejects the payout, so `reject_payout` checks the holding and reports success when nothing is left pending. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Interest payouts, which have no `company_event_id`, are confirmed by `paid_on`.
 
+### Cash accounts (v2 API)
+Cash accounts hold money in a portfolio apart from its holdings. Only the v2 API offers them.
+
+| Tool | Kind | Description |
+|------|------|-------------|
+| `list_cash_accounts` | Read | List the cash accounts of a portfolio, or of all portfolios, with balances on a date |
+| `get_cash_account` | Read | Get a cash account with its balance on a date |
+| `list_cash_account_transactions` | Read | List a cash account's transactions, newest first, in pages, by date, description or foreign identifier |
+| `create_cash_account` | Write | Create a cash account in a portfolio |
+| `update_cash_account` | Write | Rename a cash account or change its currency |
+| `delete_cash_account` | Write | Remove a cash account and its transactions |
+| `create_cash_account_transaction` | Write | Add a deposit, withdrawal, fee or other transaction |
+| `update_cash_account_transaction` | Write | Change a transaction; Sharesight needs all its fields again |
+| `delete_cash_account_transaction` | Write | Remove a transaction |
+
 ### Performance and portfolio reports
 | Tool | Kind | Description |
 |------|------|-------------|
@@ -183,8 +198,9 @@ Confirming or rejecting a payout also settles its dividend reinvestment trade. W
 |------|------|-------------|
 | `show_coupon_code` | Read | View applied promotional coupon code |
 | `get_my_user` | Read | Information on the current user (v2 API) |
-| `list_user_instruments` | Read | Instruments held across the user's portfolios, with prices and fundamentals (v2 API) |
-| `list_countries` | Read | Get Sharesight-supported countries and their settings |
+| `list_user_instruments` | Read | Instruments held across the user's portfolios, with prices and fundamentals, in pages (v2 API) |
+| `list_groups` | Read | The built-in groupings and the user's custom groups; a custom group's id is the `custom_group_id` the report tools take (v2 API) |
+| `list_countries` | Read | Get Sharesight-supported countries and their settings, in pages |
 | `apply_coupon_code` | Write | Apply a promotional coupon code |
 | `delete_coupon_code` | Write | Remove applied coupon code |
 
@@ -229,6 +245,8 @@ Set `MCP_READ_ONLY=true` to leave out every write tool, so the server offers onl
 The result keeps Sharesight's other fields and adds a `pagination` object with `total` (matches before paging), `returned`, `has_more` and `next_cursor`, which is `null` on the last page. Pass `next_cursor` as `cursor` to get the next page. The cursor carries the filters, so they need not be repeated, and repeating them with different values is an error. A cursor is signed, so an altered one is refused, and it only works for the query it came from.
 
 Sharesight offers no filter or paging options for holdings, so the server fetches the full list and applies these itself. The first page always fetches fresh from Sharesight and names that list a snapshot, whose id the cursor carries. Later pages use the same snapshot from a short-lived in-memory cache, so a walk sees one consistent list and other calls cannot change it under a walk in progress. If the cache has lost the snapshot, the next page fetches again and carries on from the same position, so the data may have changed in between. Results that fit in one page are not cached. Holdings are ordered by id so pages stay stable.
+
+The trade, payout, instrument, country and cash transaction lists page the same way, taking `limit` and `cursor` and returning `pagination`. Sharesight returns each of them whole, so the server fetches the list once, orders it by date and then id (trades of a portfolio oldest first, the other dated lists newest first) so pages stay put, and serves the pages from that fetch. Their other inputs, such as dates, go to Sharesight and cannot change between pages. These tools used to return the whole list in one reply. A reply is now at most one page, so a caller that needs everything must follow `next_cursor` until `has_more` is false. A Sharesight reply without the expected list is reported as an error. If it carries its own `pagination`, that comes back as `sharesight_pagination`.
 
 ### Settings
 

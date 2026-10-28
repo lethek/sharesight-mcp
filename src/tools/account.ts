@@ -1,10 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { CREATE, DELETE, READ_ONLY, formatError, formatResult } from "./common.js";
+import { byDate, listWhole, type WholeLister } from "../whole-list.js";
+
+/** Instruments and countries have no date, so their id keeps the order fixed */
+const byId = byDate("", "asc");
+import { CREATE, DELETE, PAGING_HELP, READ_ONLY, formatError, formatResult, pagingInput } from "./common.js";
 
 /** Account details and reference data: the coupon code on the account, and Sharesight's country definitions. */
-export function registerAccountReadTools(server: McpServer, client: SharesightClient) {
+export function registerAccountReadTools(server: McpServer, client: SharesightClient, lists: WholeLister) {
   server.registerTool(
     "show_coupon_code",
     {
@@ -42,13 +46,32 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
   server.registerTool(
     "list_user_instruments",
     {
-      description: "Lists the instruments held in the current user's portfolios, with prices and fundamentals (v2 API)",
+      description: `Lists the instruments held in the current user's portfolios, with prices and fundamentals (v2 API). ${PAGING_HELP}`,
+      annotations: READ_ONLY,
+      inputSchema: z.object({ ...pagingInput }),
+    },
+    async ({ limit, cursor }) => {
+      try {
+        const query = { tool: "list_user_instruments", inputs: {}, key: "instruments", fetch: () => client.listUserInstruments(), order: byId };
+
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
+      } catch (error) {
+        return formatError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "list_groups",
+    {
+      description:
+        "Lists the ways to group a report: the built-in groupings (market, currency, country and so on) and the user's custom groups. A custom group's id is the custom_group_id the report tools take, with grouping set to custom_group (v2 API)",
       annotations: READ_ONLY,
       inputSchema: z.object({}),
     },
     async () => {
       try {
-        return formatResult(await client.listUserInstruments());
+        return formatResult(await client.listGroups());
       } catch (error) {
         return formatError(error);
       }
@@ -58,17 +81,18 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
   server.registerTool(
     "list_countries",
     {
-      description: "Retrieves Sharesight country definitions",
+      description: `Retrieves Sharesight country definitions. ${PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
         supported: z.boolean().optional().describe("Filter by supported status (omit for all)"),
+        ...pagingInput,
       }),
     },
-    async (args) => {
+    async ({ supported, limit, cursor }) => {
       try {
-        const result = await client.listCountries(args.supported);
+        const query = { tool: "list_countries", inputs: { supported }, key: "countries", fetch: () => client.listCountries(supported), order: byId };
 
-        return formatResult(result);
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

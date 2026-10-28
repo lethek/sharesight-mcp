@@ -26,14 +26,16 @@ import { MemoryCache } from "./cache.js";
 import { CursorCodec } from "./cursor.js";
 import { HoldingsLister } from "./holdings-list.js";
 import { createUnconfirmedLister } from "./unconfirmed-list.js";
+import { createWholeLister } from "./whole-list.js";
+import type { PagedListerOptions } from "./paged-list.js";
 import { DEFAULT_MAX_ATTACHMENT_BYTES } from "./tools/attachments.js";
 import { registerTools } from "./tools/index.js";
 
 const DEFAULT_MAX_RESPONSE_CHARS = 30_000;
 const MIN_MAX_RESPONSE_CHARS = 5_000;
 const DEFAULT_CACHE_TTL_SECONDS = 60;
-/** Each entry is a whole holdings list, so keep few: enough for several walks at once, not enough to hold much memory */
-const MAX_CACHED_LISTS = 20;
+/** Each entry is a whole list, and a trade history runs to hundreds of KB, so this is a deliberate memory budget: room for many walks at once */
+const MAX_CACHED_LISTS = 50;
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const DEFAULT_HTTP_PORT = 3000;
@@ -209,16 +211,15 @@ async function runServe(): Promise<void> {
   const client = new SharesightClient(oauth, baseUrl);
 
   // Built once and shared, because in HTTP mode a new server is built for every request
-  const holdings = new HoldingsLister({
+  // Each lister keeps its own cache and cursors, so a cursor from one list is refused by another
+  const listerOptions = <T, E extends object, F extends object>(): PagedListerOptions<T, E, F> => ({
     cache: new MemoryCache(listing.cacheTtlSeconds * 1000, MAX_CACHED_LISTS),
     cursors: new CursorCodec(listing.cursorSecret),
     maxResponseChars: listing.maxResponseChars,
   });
-  const unconfirmed = createUnconfirmedLister({
-    cache: new MemoryCache(listing.cacheTtlSeconds * 1000, MAX_CACHED_LISTS),
-    cursors: new CursorCodec(listing.cursorSecret),
-    maxResponseChars: listing.maxResponseChars,
-  });
+  const holdings = new HoldingsLister(listerOptions());
+  const unconfirmed = createUnconfirmedLister(listerOptions());
+  const lists = createWholeLister(listerOptions());
 
   const createServer = (): McpServer => {
     const server = new McpServer({
@@ -226,7 +227,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client, { holdings, unconfirmed, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
+    registerTools(server, client, { holdings, unconfirmed, lists, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
 
     return server;
   };
