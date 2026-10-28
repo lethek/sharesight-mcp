@@ -32,7 +32,8 @@ export const HOLDING_WITH_NOTHING_PENDING = 7;
 export const HOLDING_WITH_PENDING_INTEREST = 8; // an unconfirmed interest payout on 2025-12-20, gone once a rejection is posted
 export const HOLDING_WITH_STUCK_INTEREST = 9; // an unconfirmed interest payout on 2025-12-20 that a rejection does not remove
 export const CASH_ACCOUNT_WITH_LONG_HISTORY = 99; // 80 transactions, enough to need several pages
-export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, enough to need several pages
+export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, and 80 trades, enough to need several pages
+export const HOLDING_WITH_LONG_HISTORY = 99; // 80 trades and 80 payouts
 
 async function readBody(req: IncomingMessage): Promise<string> {
   let body = "";
@@ -79,6 +80,9 @@ const holdingId = (path: string) => Number(/\/holdings\/(\d+)\//.exec(path)?.[1]
 const longTransactionList = () =>
   Array.from({ length: 80 }, (_, i) => ({ id: 1000 + i, date_time: `2026-01-01T00:00:${String(i).padStart(2, "0")}.000Z`, description: "d".repeat(150), amount: i }));
 
+/** Items with ids 1000 up, in numbers that need several pages */
+const longList = (count: number) => Array.from({ length: count }, (_, i) => ({ id: 1000 + i, comments: "x".repeat(150) }));
+
 /** Confirmed and unconfirmed payouts, newest first, in numbers that need several pages */
 const longPayoutList = () =>
   Array.from({ length: 120 }, (_, i) =>
@@ -109,6 +113,21 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
       methods: WRITES,
       path: /^\/api\/v3\/(trades\.json|trades\/\d+\.json|holdings\/\d+\/payouts|payouts\/\d+|portfolios\/\d+\/user_setting|custom_investments\/\d+\/adjustments|adjustments\/\d+|portfolios\/\d+\/labels(\/[^/]+)?)$/,
       handle: acceptWrite,
+    },
+    // Lists Sharesight returns whole, long enough to need several pages. Each reply carries links, like Sharesight's.
+    {
+      methods: ["GET"],
+      path: /^\/api\/v3\/(portfolios\/99\/trades\.json|holdings\/99\/(trades\.json|payouts)|countries)$/,
+      handle: ({ path, search, send }) => {
+        const key = path.endsWith("/countries") ? "countries" : path.endsWith("/payouts") ? "payouts" : "trades";
+
+        send(200, { [key]: longList(80), query: search, links: { self: "mock" } });
+      },
+    },
+    {
+      methods: ["GET"],
+      path: /^\/api\/v2\/user_instruments\.json$/,
+      handle: ({ send }) => send(200, { instruments: longList(80), links: {} }),
     },
     {
       methods: ["GET"],
@@ -197,7 +216,7 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
     },
     {
       methods: ["GET"],
-      path: /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|user_instruments\.json|holdings\/\d+\/rejected_trades\.json)$/,
+      path: /^\/api\/v2\/(portfolios\/\d+\/(capital_gains|diversity|unrealised_cgt|valuation)\.json|my_user\.json|holdings\/\d+\/rejected_trades\.json)$/,
       handle: ({ search, send }) => send(200, { query: search }),
     },
   ];

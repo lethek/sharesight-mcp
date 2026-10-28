@@ -1,8 +1,17 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { CashTransaction, CashTransactionLister } from "../cash-transaction-list.js";
 import type { SharesightClient } from "../sharesight-client.js";
+import { listWhole, type WholeLister } from "../whole-list.js";
 import { CREATE, DELETE, PAGING_HELP, READ_ONLY, UPDATE, formatError, formatResult, pagingInput, portfolioId } from "./common.js";
+
+interface CashTransaction {
+  id?: number;
+  date_time?: string;
+}
+
+/** Dates are ISO 8601, so plain string order is date order. The id keeps transactions at the same moment in a fixed order. */
+const newestFirst = (items: object[]) =>
+  (items as CashTransaction[]).sort((a, b) => (b.date_time ?? "").localeCompare(a.date_time ?? "") || (b.id ?? 0) - (a.id ?? 0));
 
 const cashAccountId = z.number().describe("The cash account ID");
 const transactionId = z.number().describe("The cash account transaction ID");
@@ -22,7 +31,7 @@ const transactionFields = {
 };
 
 /** Cash accounts hold money in a portfolio apart from its holdings. All of their endpoints are in the v2 API. */
-export function registerCashAccountReadTools(server: McpServer, client: SharesightClient, transactions: CashTransactionLister) {
+export function registerCashAccountReadTools(server: McpServer, client: SharesightClient, lists: WholeLister) {
   server.registerTool(
     "list_cash_accounts",
     {
@@ -79,14 +88,10 @@ export function registerCashAccountReadTools(server: McpServer, client: Sharesig
       try {
         // What the query asks Sharesight for is part of the scope, so a cursor only continues the query it came from
         const scope = `list_cash_account_transactions:${cash_account_id}:${JSON.stringify(options)}`;
-        const fetch = async () => {
-          const { cash_account_transactions, ...envelope } = (await client.listCashAccountTransactions(cash_account_id, options)) as Record<string, unknown>;
 
-          return { items: (cash_account_transactions as CashTransaction[] | undefined) ?? [], envelope };
-        };
-        const { items, envelope, pagination } = await transactions.list(scope, fetch, {}, { cursor, limit });
-
-        return formatResult({ ...envelope, cash_account_transactions: items, pagination });
+        return formatResult(
+          await listWhole(lists, scope, "cash_account_transactions", () => client.listCashAccountTransactions(cash_account_id, options), { cursor, limit }, newestFirst)
+        );
       } catch (error) {
         return formatError(error);
       }

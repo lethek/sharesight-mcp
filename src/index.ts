@@ -26,7 +26,7 @@ import { MemoryCache } from "./cache.js";
 import { CursorCodec } from "./cursor.js";
 import { HoldingsLister } from "./holdings-list.js";
 import { createUnconfirmedLister } from "./unconfirmed-list.js";
-import { createCashTransactionLister } from "./cash-transaction-list.js";
+import { createWholeLister } from "./whole-list.js";
 import type { PagedListerOptions } from "./paged-list.js";
 import { DEFAULT_MAX_ATTACHMENT_BYTES } from "./tools/attachments.js";
 import { registerTools } from "./tools/index.js";
@@ -219,7 +219,7 @@ async function runServe(): Promise<void> {
   });
   const holdings = new HoldingsLister(listerOptions());
   const unconfirmed = createUnconfirmedLister(listerOptions());
-  const cashTransactions = createCashTransactionLister(listerOptions());
+  const lists = createWholeLister(listerOptions());
 
   const createServer = (): McpServer => {
     const server = new McpServer({
@@ -227,7 +227,7 @@ async function runServe(): Promise<void> {
       version: VERSION,
     });
 
-    registerTools(server, client, { holdings, unconfirmed, cashTransactions, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
+    registerTools(server, client, { holdings, unconfirmed, lists, readOnly, paths: { root: dataRoot, unrestricted: !httpConfig, maxBytes: maxAttachmentBytes } });
 
     return server;
   };

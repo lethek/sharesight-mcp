@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
-import { CREATE, DELETE, OVERWRITE, READ_ONLY, formatError, formatResult, holdingId, portfolioId } from "./common.js";
+import { listWhole, type WholeLister } from "../whole-list.js";
+import { CREATE, DELETE, OVERWRITE, PAGING_HELP, READ_ONLY, formatError, formatResult, holdingId, pagingInput, portfolioId } from "./common.js";
 
 const ATTACHMENT_HELP = "Trades list their attachments (id, file name, size, type) but this server cannot download the file itself.";
 
@@ -35,22 +36,25 @@ const tradeFields = {
   send_to_xero: z.boolean().optional().describe("true to sync the trade with Xero"),
 };
 
-export function registerTradeReadTools(server: McpServer, client: SharesightClient) {
+export function registerTradeReadTools(server: McpServer, client: SharesightClient, lists: WholeLister) {
   server.registerTool(
     "list_trades",
     {
-      description: `Retrieves the trades in a portfolio. ${ATTACHMENT_HELP}`,
+      description: `Retrieves the trades in a portfolio. ${ATTACHMENT_HELP} ${PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
         portfolio_id: portfolioId,
         start_date: z.string().optional().describe("Trades from this date YYYY-MM-DD (defaults to portfolio inception)"),
         end_date: z.string().optional().describe("Trades until this date YYYY-MM-DD (defaults to today)"),
         unique_identifier: z.string().optional().describe("Only the trade with this unique identifier"),
+        ...pagingInput,
       }),
     },
-    async ({ portfolio_id, ...options }) => {
+    async ({ portfolio_id, limit, cursor, ...options }) => {
       try {
-        return formatResult(await client.listTrades(portfolio_id, options));
+        const scope = `list_trades:${portfolio_id}:${JSON.stringify(options)}`;
+
+        return formatResult(await listWhole(lists, scope, "trades", () => client.listTrades(portfolio_id, options), { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }
@@ -60,16 +64,19 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
   server.registerTool(
     "list_holding_trades",
     {
-      description: `Retrieves the trades of a holding. ${ATTACHMENT_HELP}`,
+      description: `Retrieves the trades of a holding. ${ATTACHMENT_HELP} ${PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
         holding_id: holdingId,
         unique_identifier: z.string().optional().describe("Only the trade with this unique identifier"),
+        ...pagingInput,
       }),
     },
-    async ({ holding_id, ...options }) => {
+    async ({ holding_id, limit, cursor, ...options }) => {
       try {
-        return formatResult(await client.listHoldingTrades(holding_id, options));
+        const scope = `list_holding_trades:${holding_id}:${JSON.stringify(options)}`;
+
+        return formatResult(await listWhole(lists, scope, "trades", () => client.listHoldingTrades(holding_id, options), { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

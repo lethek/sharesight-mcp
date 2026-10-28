@@ -1,10 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { CREATE, DELETE, READ_ONLY, formatError, formatResult } from "./common.js";
+import { listWhole, type WholeLister } from "../whole-list.js";
+import { CREATE, DELETE, PAGING_HELP, READ_ONLY, formatError, formatResult, pagingInput } from "./common.js";
 
 /** Account details and reference data: the coupon code on the account, and Sharesight's country definitions. */
-export function registerAccountReadTools(server: McpServer, client: SharesightClient) {
+export function registerAccountReadTools(server: McpServer, client: SharesightClient, lists: WholeLister) {
   server.registerTool(
     "show_coupon_code",
     {
@@ -42,13 +43,13 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
   server.registerTool(
     "list_user_instruments",
     {
-      description: "Lists the instruments held in the current user's portfolios, with prices and fundamentals (v2 API)",
+      description: `Lists the instruments held in the current user's portfolios, with prices and fundamentals (v2 API). ${PAGING_HELP}`,
       annotations: READ_ONLY,
-      inputSchema: z.object({}),
+      inputSchema: z.object({ ...pagingInput }),
     },
-    async () => {
+    async ({ limit, cursor }) => {
       try {
-        return formatResult(await client.listUserInstruments());
+        return formatResult(await listWhole(lists, "list_user_instruments", "instruments", () => client.listUserInstruments(), { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }
@@ -75,17 +76,18 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
   server.registerTool(
     "list_countries",
     {
-      description: "Retrieves Sharesight country definitions",
+      description: `Retrieves Sharesight country definitions. ${PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
         supported: z.boolean().optional().describe("Filter by supported status (omit for all)"),
+        ...pagingInput,
       }),
     },
-    async (args) => {
+    async ({ supported, limit, cursor }) => {
       try {
-        const result = await client.listCountries(args.supported);
+        const scope = `list_countries:${supported}`;
 
-        return formatResult(result);
+        return formatResult(await listWhole(lists, scope, "countries", () => client.listCountries(supported), { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

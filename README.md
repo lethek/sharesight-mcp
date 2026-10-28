@@ -87,8 +87,8 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 ### Trades
 | Tool | Kind | Description |
 |------|------|-------------|
-| `list_trades` | Read | List the trades in a portfolio, by date range or unique identifier |
-| `list_holding_trades` | Read | List the trades of a holding |
+| `list_trades` | Read | List the trades in a portfolio, by date range or unique identifier, in pages |
+| `list_holding_trades` | Read | List the trades of a holding, in pages |
 | `get_trade` | Read | Get a trade by ID |
 | `create_trade` | Write | Create a trade, optionally with an [attachment](#attachments) |
 | `update_trade` | Write | Update a trade, or replace or remove its attachment |
@@ -97,7 +97,7 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 ### Payouts
 | Tool | Kind | Description |
 |------|------|-------------|
-| `list_payouts` | Read | List the payouts (dividends and interest) of a holding |
+| `list_payouts` | Read | List the payouts (dividends and interest) of a holding, in pages |
 | `get_payout` | Read | Get a payout by ID |
 | `create_payout` | Write | Create a payout, optionally with an [attachment](#attachments) |
 | `update_payout` | Write | Update a payout, or replace or remove its attachment |
@@ -198,9 +198,9 @@ Cash accounts hold money in a portfolio apart from its holdings. Only the v2 API
 |------|------|-------------|
 | `show_coupon_code` | Read | View applied promotional coupon code |
 | `get_my_user` | Read | Information on the current user (v2 API) |
-| `list_user_instruments` | Read | Instruments held across the user's portfolios, with prices and fundamentals (v2 API) |
+| `list_user_instruments` | Read | Instruments held across the user's portfolios, with prices and fundamentals, in pages (v2 API) |
 | `list_groups` | Read | The built-in groupings and the user's custom groups; a custom group's id is the `custom_group_id` the report tools take (v2 API) |
-| `list_countries` | Read | Get Sharesight-supported countries and their settings |
+| `list_countries` | Read | Get Sharesight-supported countries and their settings, in pages |
 | `apply_coupon_code` | Write | Apply a promotional coupon code |
 | `delete_coupon_code` | Write | Remove applied coupon code |
 
@@ -245,6 +245,8 @@ Set `MCP_READ_ONLY=true` to leave out every write tool, so the server offers onl
 The result keeps Sharesight's other fields and adds a `pagination` object with `total` (matches before paging), `returned`, `has_more` and `next_cursor`, which is `null` on the last page. Pass `next_cursor` as `cursor` to get the next page. The cursor carries the filters, so they need not be repeated, and repeating them with different values is an error. A cursor is signed, so an altered one is refused, and it only works for the query it came from.
 
 Sharesight offers no filter or paging options for holdings, so the server fetches the full list and applies these itself. The first page always fetches fresh from Sharesight and names that list a snapshot, whose id the cursor carries. Later pages use the same snapshot from a short-lived in-memory cache, so a walk sees one consistent list and other calls cannot change it under a walk in progress. If the cache has lost the snapshot, the next page fetches again and carries on from the same position, so the data may have changed in between. Results that fit in one page are not cached. Holdings are ordered by id so pages stay stable.
+
+The trade, payout, instrument, country and cash transaction lists page the same way, taking `limit` and `cursor` and returning `pagination`. Sharesight returns each of them whole, so the server fetches the list once, keeps Sharesight's order (newest first for cash transactions), and serves the pages from that fetch. Their other inputs, such as dates, go to Sharesight and cannot change between pages.
 
 ### Settings
 

@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { HoldingsLister } from "../holdings-list.js";
 import type { SharesightClient } from "../sharesight-client.js";
-import type { CashTransactionLister } from "../cash-transaction-list.js";
 import type { UnconfirmedLister } from "../unconfirmed-list.js";
+import type { WholeLister } from "../whole-list.js";
 import type { AttachmentSettings } from "./attachments.js";
 import { registerAccountReadTools, registerAccountWriteTools } from "./account.js";
 import { registerAdjustmentReadTools, registerAdjustmentWriteTools } from "./adjustments.js";
@@ -23,8 +23,8 @@ export interface ToolOptions {
   holdings: HoldingsLister;
   /** Pages the unconfirmed payouts and trades */
   unconfirmed: UnconfirmedLister;
-  /** Pages the transactions of a cash account */
-  cashTransactions: CashTransactionLister;
+  /** Pages the lists Sharesight returns whole: trades, payouts, cash account transactions, instruments and countries */
+  lists: WholeLister;
   /** Leaves out every tool that creates, changes or deletes data */
   readOnly: boolean;
   /** Where the attachment tools may read files from, and how large an attachment may be */
@@ -35,21 +35,21 @@ export interface ToolOptions {
  * Registers the tools, grouped by feature area. Each area has its read tools and its write tools in separate functions, so read-only
  * mode is a matter of not calling the write ones. Add a new area here, read tools first.
  */
-export function registerTools(server: McpServer, client: SharesightClient, { holdings, unconfirmed, cashTransactions, readOnly, paths }: ToolOptions) {
+export function registerTools(server: McpServer, client: SharesightClient, { holdings, unconfirmed, lists, readOnly, paths }: ToolOptions) {
   registerPortfolioReadTools(server, client);
   registerHoldingReadTools(server, client, holdings);
-  registerTradeReadTools(server, client);
-  registerPayoutReadTools(server, client);
+  registerTradeReadTools(server, client, lists);
+  registerPayoutReadTools(server, client, lists);
   registerCustomInvestmentReadTools(server, client);
   registerCustomInvestmentPriceReadTools(server, client);
   registerCouponRateReadTools(server, client);
   registerAdjustmentReadTools(server, client);
   registerLabelReadTools(server, client);
   registerConfirmationReadTools(server, client, unconfirmed);
-  registerCashAccountReadTools(server, client, cashTransactions);
+  registerCashAccountReadTools(server, client, lists);
   registerPerformanceReadTools(server, client);
   registerReportReadTools(server, client);
-  registerAccountReadTools(server, client);
+  registerAccountReadTools(server, client, lists);
 
   if (readOnly) {
     return;
