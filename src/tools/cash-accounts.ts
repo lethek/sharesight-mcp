@@ -1,17 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { listWhole, type WholeLister } from "../whole-list.js";
+import { byDate, listWhole, type WholeLister } from "../whole-list.js";
 import { CREATE, DELETE, PAGING_HELP, READ_ONLY, UPDATE, formatError, formatResult, pagingInput, portfolioId } from "./common.js";
-
-interface CashTransaction {
-  id?: number;
-  date_time?: string;
-}
-
-/** Dates are ISO 8601, so plain string order is date order. The id keeps transactions at the same moment in a fixed order. */
-const newestFirst = (items: object[]) =>
-  (items as CashTransaction[]).sort((a, b) => (b.date_time ?? "").localeCompare(a.date_time ?? "") || (b.id ?? 0) - (a.id ?? 0));
 
 const cashAccountId = z.number().describe("The cash account ID");
 const transactionId = z.number().describe("The cash account transaction ID");
@@ -86,12 +77,15 @@ export function registerCashAccountReadTools(server: McpServer, client: Sharesig
     },
     async ({ cash_account_id, limit, cursor, ...options }) => {
       try {
-        // What the query asks Sharesight for is part of the scope, so a cursor only continues the query it came from
-        const scope = `list_cash_account_transactions:${cash_account_id}:${JSON.stringify(options)}`;
+        const query = {
+          tool: "list_cash_account_transactions",
+          inputs: { cash_account_id, ...options },
+          key: "cash_account_transactions",
+          fetch: () => client.listCashAccountTransactions(cash_account_id, options),
+          order: byDate("date_time", "desc"),
+        };
 
-        return formatResult(
-          await listWhole(lists, scope, "cash_account_transactions", () => client.listCashAccountTransactions(cash_account_id, options), { cursor, limit }, newestFirst)
-        );
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

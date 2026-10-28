@@ -22,28 +22,57 @@ export function createWholeLister(options: WholeListerOptions): WholeLister {
 }
 
 /**
+ * Orders by a date field, then by id, so page boundaries stay put when the list is fetched again. Dates are ISO 8601, so plain
+ * string order is date order.
+ */
+export const byDate =
+  (field: string, direction: "asc" | "desc") =>
+  (items: object[]): object[] => {
+    const sign = direction === "asc" ? 1 : -1;
+    const read = (item: object, name: string) => (item as Record<string, unknown>)[name];
+
+    return items.sort(
+      (a, b) => sign * (String(read(a, field) ?? "").localeCompare(String(read(b, field) ?? "")) || Number(read(a, "id") ?? 0) - Number(read(b, "id") ?? 0))
+    );
+  };
+
+export interface WholeListQuery {
+  /** The tool's name, which with `inputs` is the scope, so a cursor only continues the query it came from */
+  tool: string;
+  /** Every input that decides what Sharesight returns */
+  inputs: object;
+  /** The field of Sharesight's reply that holds the list */
+  key: string;
+  fetch: () => Promise<object>;
+  /** Puts the fetched list in a fixed order, so page boundaries stay put */
+  order: (items: object[]) => object[];
+}
+
+/**
  * Fetches a reply once, takes its list from the field `key`, and returns one page of it in that same field, with the rest of the
- * reply and a pagination block beside it.
+ * reply and a pagination block beside it. A reply without the list is an error, not an empty list.
  */
 export async function listWhole(
   lister: WholeLister,
-  scope: string,
-  key: string,
-  fetch: () => Promise<object>,
-  page: PageArgs,
-  order?: (items: object[]) => object[]
+  { tool, inputs, key, fetch, order }: WholeListQuery,
+  page: PageArgs
 ): Promise<WholeEnvelope & { pagination: PagedResult<object, WholeEnvelope>["pagination"] }> {
   const { items, envelope, pagination } = await lister.list(
-    scope,
+    `${tool}:${JSON.stringify(inputs)}`,
     async () => {
       const { [key]: list, ...rest } = (await fetch()) as WholeEnvelope;
-      const found = Array.isArray(list) ? (list as object[]) : [];
 
-      return { items: order ? order(found) : found, envelope: rest };
+      if (!Array.isArray(list)) {
+        throw new Error(`Sharesight's reply to ${tool} has no "${key}" list, so it cannot be paged.`);
+      }
+
+      return { items: order(list as object[]), envelope: rest };
     },
     {},
     page
   );
+  // Sharesight's own pagination, if the reply has one, stays visible beside ours
+  const { pagination: theirs, ...rest } = envelope;
 
-  return { ...envelope, [key]: items, pagination };
+  return { ...rest, ...(theirs !== undefined && { sharesight_pagination: theirs }), [key]: items, pagination };
 }

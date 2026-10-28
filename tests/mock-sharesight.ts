@@ -80,8 +80,13 @@ const holdingId = (path: string) => Number(/\/holdings\/(\d+)\//.exec(path)?.[1]
 const longTransactionList = () =>
   Array.from({ length: 80 }, (_, i) => ({ id: 1000 + i, date_time: `2026-01-01T00:00:${String(i).padStart(2, "0")}.000Z`, description: "d".repeat(150), amount: i }));
 
-/** Items with ids 1000 up, in numbers that need several pages */
-const longList = (count: number) => Array.from({ length: count }, (_, i) => ({ id: 1000 + i, comments: "x".repeat(150) }));
+/** Items with ids from `firstId` up and dates that rise with the id, in numbers that need several pages */
+const longList = (count: number, firstId: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const date = `2020-01-01T00:00:${String(i).padStart(2, "0")}`;
+
+    return { id: firstId + i, transaction_date: date, paid_on: date, comments: "x".repeat(150) };
+  });
 
 /** Confirmed and unconfirmed payouts, newest first, in numbers that need several pages */
 const longPayoutList = () =>
@@ -119,15 +124,21 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
       methods: ["GET"],
       path: /^\/api\/v3\/(portfolios\/99\/trades\.json|holdings\/99\/(trades\.json|payouts)|countries)$/,
       handle: ({ path, search, send }) => {
-        const key = path.endsWith("/countries") ? "countries" : path.endsWith("/payouts") ? "payouts" : "trades";
+        const [key, firstId] = path.endsWith("/countries") ? ["countries", 3000] : path.endsWith("/payouts") ? ["payouts", 2000] : ["trades", 1000];
 
-        send(200, { [key]: longList(80), query: search, links: { self: "mock" } });
+        send(200, { [key]: longList(80, firstId as number), query: search, links: { self: "mock" } });
       },
     },
     {
       methods: ["GET"],
       path: /^\/api\/v2\/user_instruments\.json$/,
-      handle: ({ send }) => send(200, { instruments: longList(80), links: {} }),
+      handle: ({ send }) => send(200, { instruments: longList(80, 4000), links: { self: "mock" } }),
+    },
+    // Short trade lists echo the query, and a payouts reply has no list, like a changed Sharesight reply would
+    {
+      methods: ["GET"],
+      path: /^\/api\/v3\/(portfolios\/\d+|holdings\/\d+)\/trades\.json$/,
+      handle: ({ search, send }) => send(200, { trades: [], query: search }),
     },
     {
       methods: ["GET"],

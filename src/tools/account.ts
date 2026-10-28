@@ -1,7 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
-import { listWhole, type WholeLister } from "../whole-list.js";
+import { byDate, listWhole, type WholeLister } from "../whole-list.js";
+
+/** Instruments and countries have no date, so their id keeps the order fixed */
+const byId = byDate("", "asc");
 import { CREATE, DELETE, PAGING_HELP, READ_ONLY, formatError, formatResult, pagingInput } from "./common.js";
 
 /** Account details and reference data: the coupon code on the account, and Sharesight's country definitions. */
@@ -49,7 +52,9 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
     },
     async ({ limit, cursor }) => {
       try {
-        return formatResult(await listWhole(lists, "list_user_instruments", "instruments", () => client.listUserInstruments(), { cursor, limit }));
+        const query = { tool: "list_user_instruments", inputs: {}, key: "instruments", fetch: () => client.listUserInstruments(), order: byId };
+
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }
@@ -85,9 +90,9 @@ export function registerAccountReadTools(server: McpServer, client: SharesightCl
     },
     async ({ supported, limit, cursor }) => {
       try {
-        const scope = `list_countries:${supported}`;
+        const query = { tool: "list_countries", inputs: { supported }, key: "countries", fetch: () => client.listCountries(supported), order: byId };
 
-        return formatResult(await listWhole(lists, scope, "countries", () => client.listCountries(supported), { cursor, limit }));
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

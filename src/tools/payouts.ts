@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
-import { listWhole, type WholeLister } from "../whole-list.js";
+import { byDate, listWhole, type WholeLister } from "../whole-list.js";
 import { CREATE, DELETE, OVERWRITE, PAGING_HELP, READ_ONLY, formatError, formatResult, holdingId, pagingInput } from "./common.js";
 
 const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but this server cannot download the file itself.";
@@ -66,9 +66,9 @@ export function registerPayoutReadTools(server: McpServer, client: SharesightCli
     },
     async ({ holding_id, limit, cursor, ...options }) => {
       try {
-        const scope = `list_payouts:${holding_id}:${JSON.stringify(options)}`;
+        const query = { tool: "list_payouts", inputs: { holding_id, ...options }, key: "payouts", fetch: () => client.listPayouts(holding_id, options), order: byDate("paid_on", "desc") };
 
-        return formatResult(await listWhole(lists, scope, "payouts", () => client.listPayouts(holding_id, options), { cursor, limit }));
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

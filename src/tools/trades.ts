@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
-import { listWhole, type WholeLister } from "../whole-list.js";
+import { byDate, listWhole, type WholeLister } from "../whole-list.js";
 import { CREATE, DELETE, OVERWRITE, PAGING_HELP, READ_ONLY, formatError, formatResult, holdingId, pagingInput, portfolioId } from "./common.js";
 
 const ATTACHMENT_HELP = "Trades list their attachments (id, file name, size, type) but this server cannot download the file itself.";
@@ -52,9 +52,9 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
     },
     async ({ portfolio_id, limit, cursor, ...options }) => {
       try {
-        const scope = `list_trades:${portfolio_id}:${JSON.stringify(options)}`;
+        const query = { tool: "list_trades", inputs: { portfolio_id, ...options }, key: "trades", fetch: () => client.listTrades(portfolio_id, options), order: byDate("transaction_date", "asc") };
 
-        return formatResult(await listWhole(lists, scope, "trades", () => client.listTrades(portfolio_id, options), { cursor, limit }));
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }
@@ -74,9 +74,9 @@ export function registerTradeReadTools(server: McpServer, client: SharesightClie
     },
     async ({ holding_id, limit, cursor, ...options }) => {
       try {
-        const scope = `list_holding_trades:${holding_id}:${JSON.stringify(options)}`;
+        const query = { tool: "list_holding_trades", inputs: { holding_id, ...options }, key: "trades", fetch: () => client.listHoldingTrades(holding_id, options), order: byDate("transaction_date", "desc") };
 
-        return formatResult(await listWhole(lists, scope, "trades", () => client.listHoldingTrades(holding_id, options), { cursor, limit }));
+        return formatResult(await listWhole(lists, query, { cursor, limit }));
       } catch (error) {
         return formatError(error);
       }

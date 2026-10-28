@@ -34,8 +34,8 @@ import { registerTools } from "./tools/index.js";
 const DEFAULT_MAX_RESPONSE_CHARS = 30_000;
 const MIN_MAX_RESPONSE_CHARS = 5_000;
 const DEFAULT_CACHE_TTL_SECONDS = 60;
-/** Each entry is a whole holdings list, so keep few: enough for several walks at once, not enough to hold much memory */
-const MAX_CACHED_LISTS = 20;
+/** Each entry is a whole list, and a trade history runs to hundreds of KB, so this is a deliberate memory budget: room for many walks at once */
+const MAX_CACHED_LISTS = 50;
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const DEFAULT_HTTP_PORT = 3000;
