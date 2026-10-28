@@ -100,7 +100,7 @@ Every tool carries MCP annotations, so clients can tell reads from writes and as
 | `list_payouts` | Read | List the payouts (dividends and interest) of a holding, in pages |
 | `get_payout` | Read | Get a payout by ID |
 | `create_payout` | Write | Create a payout, optionally with an [attachment](#attachments) |
-| `update_payout` | Write | Update a payout, or replace or remove its attachment |
+| `update_payout` | Write | Update a payout, or replace or remove its attachment. `currency_code` corrects its currency (see the confirmations section) |
 | `delete_payout` | Write | Remove a payout |
 
 ### Custom investments
@@ -163,6 +163,8 @@ Sharesight creates payouts and trades from company events and leaves them unconf
 Dividend payouts are named by `company_event_id`, and interest payouts, which have none, by `paid_on`. The unconfirmed lists search 2000 to 2100 unless you narrow them, and say which dates they searched. They come in pages like the holdings lists: Sharesight returns the whole history, so the server fetches it once, keeps the unconfirmed items, and serves later pages from that list, which also keeps the pages steady while you confirm or reject items.
 
 Confirming or rejecting a payout also settles its dividend reinvestment trade. When a holding has one pending, `confirm_payout` refuses until you pass `reinvestment` (to keep the trade) or `skip_reinvestment` (to drop it), because confirming without either removes the trade. Sharesight answers a rejection by `paid_on` with a 500 error even though it rejects the payout, so `reject_payout` checks the holding and reports success when nothing is left pending. There is no tool to confirm or reject any other trade: the documented v2 call creates a new confirmed trade from the fields it is sent instead, even when asked to reject, and the v3 equivalents are not available to API clients. Interest payouts, which have no `company_event_id`, are confirmed by `paid_on`.
+
+`confirm_payout` sends the unconfirmed payout's currency and exchange rate with the confirmation. Without them, Sharesight stores the payout in the instrument's currency, so a USD distribution on an ASX-listed CDI such as VTS becomes AUD, and the next v3 update sets its rate to 1. The v3 API ignores a payout's currency, so `update_payout` takes `currency_code` (with `exchange_rate`) and sets it through v2 before the rest of the update. That also repairs a payout already stored in the wrong currency.
 
 ### Cash accounts (v2 API)
 Cash accounts hold money in a portfolio apart from its holdings. Only the v2 API offers them.

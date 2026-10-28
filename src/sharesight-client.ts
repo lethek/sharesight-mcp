@@ -964,6 +964,11 @@ export class SharesightClient {
     return this.request<PassThroughResponse>("GET", `/api/v2/holdings/${holdingId}/payouts.json`, undefined, options);
   }
 
+  /** Updates a payout through v2, the only version that changes its currency. */
+  async updatePayoutV2(id: number, data: object): Promise<PassThroughResponse> {
+    return this.request<PassThroughResponse>("PUT", `/api/v2/payouts/${id}.json`, { payout: data }, undefined, writeTimeout(data));
+  }
+
   /** Confirms or rejects an unconfirmed payout, which the v2 API does with a POST of a new state. */
   async setPayoutStateV2(data: object): Promise<PassThroughResponse> {
     return this.request<PassThroughResponse>("POST", "/api/v2/payouts.json", { payout: data });
