@@ -31,6 +31,7 @@ export const HOLDING_WITH_PENDING_REINVESTMENT = 5; // an unconfirmed trade for 
 export const HOLDING_WITH_NOTHING_PENDING = 7;
 export const HOLDING_WITH_PENDING_INTEREST = 8; // an unconfirmed interest payout on 2025-12-20, gone once a rejection is posted
 export const HOLDING_WITH_STUCK_INTEREST = 9; // an unconfirmed interest payout on 2025-12-20 that a rejection does not remove
+export const CASH_ACCOUNT_WITH_LONG_HISTORY = 99; // 80 transactions, enough to need several pages
 export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, enough to need several pages
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -73,6 +74,10 @@ const acceptWrite = ({ entry, body, send }: Call) => {
 const echoQuery = ({ search, send }: Call) => send(200, { api_transaction: { id: 1 }, query: search });
 
 const holdingId = (path: string) => Number(/\/holdings\/(\d+)\//.exec(path)?.[1]);
+
+/** Cash transactions oldest first, which is not the order the tool should return them in */
+const longTransactionList = () =>
+  Array.from({ length: 80 }, (_, i) => ({ id: 1000 + i, date_time: `2026-01-01T00:00:${String(i).padStart(2, "0")}.000Z`, description: "d".repeat(150), amount: i }));
 
 /** Confirmed and unconfirmed payouts, newest first, in numbers that need several pages */
 const longPayoutList = () =>
@@ -168,7 +173,16 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
     // v2: cash accounts and their transactions. Deleting answers 204 with no body, like Sharesight.
     {
       methods: ["GET"],
-      path: /^\/api\/v2\/(groups\.json|cash_accounts\.json|portfolios\/\d+\/cash_accounts\.json|cash_accounts\/\d+\.json|cash_accounts\/\d+\/cash_account_transactions\.json)$/,
+      path: /^\/api\/v2\/cash_accounts\/(\d+)\/cash_account_transactions\.json$/,
+      handle: ({ path, search, send }) => {
+        const long = path.includes(`/cash_accounts/${CASH_ACCOUNT_WITH_LONG_HISTORY}/`);
+
+        send(200, { cash_account_transactions: long ? longTransactionList() : [], query: search, links: { self: "mock" } });
+      },
+    },
+    {
+      methods: ["GET"],
+      path: /^\/api\/v2\/(groups\.json|cash_accounts\.json|portfolios\/\d+\/cash_accounts\.json|cash_accounts\/\d+\.json)$/,
       handle: echoQuery,
     },
     {

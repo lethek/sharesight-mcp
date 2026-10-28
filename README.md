@@ -171,7 +171,7 @@ Cash accounts hold money in a portfolio apart from its holdings. Only the v2 API
 |------|------|-------------|
 | `list_cash_accounts` | Read | List the cash accounts of a portfolio, or of all portfolios, with balances on a date |
 | `get_cash_account` | Read | Get a cash account with its balance on a date |
-| `list_cash_account_transactions` | Read | List a cash account's transactions by date, description or foreign identifier |
+| `list_cash_account_transactions` | Read | List a cash account's transactions, newest first, in pages, by date, description or foreign identifier |
 | `create_cash_account` | Write | Create a cash account in a portfolio |
 | `update_cash_account` | Write | Rename a cash account or change its currency |
 | `delete_cash_account` | Write | Remove a cash account and its transactions |

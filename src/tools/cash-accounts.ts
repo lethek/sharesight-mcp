@@ -1,7 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import type { CashTransaction, CashTransactionLister } from "../cash-transaction-list.js";
 import type { SharesightClient } from "../sharesight-client.js";
-import { CREATE, DELETE, READ_ONLY, UPDATE, formatError, formatResult, portfolioId } from "./common.js";
+import { CREATE, DELETE, PAGING_HELP, READ_ONLY, UPDATE, formatError, formatResult, pagingInput, portfolioId } from "./common.js";
 
 const cashAccountId = z.number().describe("The cash account ID");
 const transactionId = z.number().describe("The cash account transaction ID");
@@ -21,7 +22,7 @@ const transactionFields = {
 };
 
 /** Cash accounts hold money in a portfolio apart from its holdings. All of their endpoints are in the v2 API. */
-export function registerCashAccountReadTools(server: McpServer, client: SharesightClient) {
+export function registerCashAccountReadTools(server: McpServer, client: SharesightClient, transactions: CashTransactionLister) {
   server.registerTool(
     "list_cash_accounts",
     {
@@ -63,7 +64,7 @@ export function registerCashAccountReadTools(server: McpServer, client: Sharesig
   server.registerTool(
     "list_cash_account_transactions",
     {
-      description: "Lists the transactions of a cash account, with the running balance after each (v2 API)",
+      description: `Lists the transactions of a cash account, newest first, with the running balance after each (v2 API). ${PAGING_HELP}`,
       annotations: READ_ONLY,
       inputSchema: z.object({
         cash_account_id: cashAccountId,
@@ -71,11 +72,21 @@ export function registerCashAccountReadTools(server: McpServer, client: Sharesig
         to: z.string().optional().describe("Transactions until this date YYYY-MM-DD"),
         description: z.string().optional().describe("Only transactions with this description"),
         foreign_identifier: z.string().optional().describe("Only the transaction with this foreign identifier"),
+        ...pagingInput,
       }),
     },
-    async ({ cash_account_id, ...options }) => {
+    async ({ cash_account_id, limit, cursor, ...options }) => {
       try {
-        return formatResult(await client.listCashAccountTransactions(cash_account_id, options));
+        // What the query asks Sharesight for is part of the scope, so a cursor only continues the query it came from
+        const scope = `list_cash_account_transactions:${cash_account_id}:${JSON.stringify(options)}`;
+        const fetch = async () => {
+          const { cash_account_transactions, ...envelope } = (await client.listCashAccountTransactions(cash_account_id, options)) as Record<string, unknown>;
+
+          return { items: (cash_account_transactions as CashTransaction[] | undefined) ?? [], envelope };
+        };
+        const { items, envelope, pagination } = await transactions.list(scope, fetch, {}, { cursor, limit });
+
+        return formatResult({ ...envelope, cash_account_transactions: items, pagination });
       } catch (error) {
         return formatError(error);
       }

@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import type { UnconfirmedItem, UnconfirmedLister } from "../unconfirmed-list.js";
-import { DELETE, READ_ONLY, UPDATE, formatError, formatFailure, formatResult, holdingId, portfolioId } from "./common.js";
+import { DELETE, PAGING_HELP, READ_ONLY, UPDATE, formatError, formatFailure, formatResult, holdingId, pagingInput, portfolioId } from "./common.js";
 
 /**
  * Sharesight builds payouts and trades from company events (dividends, splits, mergers) and from maturing interest instruments, and
@@ -42,13 +42,7 @@ function identify(companyEventId: number | undefined, paidOn: string | undefined
   return undefined;
 }
 
-const PAGING_HELP =
-  "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself. Later pages come from the list the first page found while the server still holds it. If it has expired, the list is fetched again and items confirmed or rejected since then shift the pages, so after confirming or rejecting, start again from the first page.";
-
-const pagingInput = {
-  limit: z.number().int().min(1).max(200).optional().describe("Most items to return in one page (maximum 200). A page is also cut short when it fills the response size limit."),
-  cursor: z.string().nullish().describe("The pagination.next_cursor from the previous page, to get the next page. Leave out for the first page."),
-};
+const CONFIRMING_HELP = `${PAGING_HELP} After confirming or rejecting items, start again from the first page.`;
 
 export function registerConfirmationReadTools(server: McpServer, client: SharesightClient, unconfirmed: UnconfirmedLister) {
   /** Both lists work the same way: fetch the portfolio's whole v2 list, keep the unconfirmed items, and page them. */
@@ -58,7 +52,7 @@ export function registerConfirmationReadTools(server: McpServer, client: Sharesi
     server.registerTool(
       name,
       {
-        description: `${description} ${PAGING_HELP}`,
+        description: `${description} ${CONFIRMING_HELP}`,
         annotations: READ_ONLY,
         inputSchema: z.object({ ...rangeInput, ...pagingInput }),
       },

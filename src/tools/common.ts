@@ -19,6 +19,15 @@ export const portfolioId = z.number().describe("The portfolio ID");
 export const holdingId = z.number().describe("The holding ID");
 export const consolidated = z.boolean().optional().describe("True if portfolio_id is a consolidated portfolio view");
 
+/** For the lists that Sharesight returns whole and a PagedLister serves a page at a time */
+export const PAGING_HELP =
+  "Results come in pages sized to fit the response limit. Check pagination.has_more, and pass pagination.next_cursor as cursor to get the next page; never work out a cursor yourself. Later pages come from the list the first page found while the server still holds it. If it has expired, the list is fetched again, so changes made since then can shift the pages.";
+
+export const pagingInput = {
+  limit: z.number().int().min(1).max(200).optional().describe("Most items to return in one page (maximum 200). A page is also cut short when it fills the response size limit."),
+  cursor: z.string().nullish().describe("The pagination.next_cursor from the previous page, to get the next page. Leave out for the first page."),
+};
+
 /**
  * MCP tool annotations. Clients use them to tell tools apart, for example to ask before running one that changes data. Every tool
  * talks to Sharesight, so none of them sets openWorldHint (it defaults to true).

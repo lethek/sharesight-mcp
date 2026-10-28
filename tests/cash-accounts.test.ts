@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { lastBody, lastCall, lastRequest } from "./mock-sharesight.js";
+import { CASH_ACCOUNT_WITH_LONG_HISTORY as LONG_HISTORY, lastBody, lastCall, lastRequest } from "./mock-sharesight.js";
+import { walkPages } from "./pages.js";
 import { withServer } from "./stdio-session.js";
 
 const TRANSACTION = { description: "Salary", amount: 100, type_name: "DEPOSIT", date_time: "2026-01-02T00:00:00" };
@@ -74,6 +75,26 @@ describe("cash account transaction tools", () => {
 
       assert.equal(result.payload.query, "?from=2026-01-01&to=2026-12-31&foreign_identifier=x-1");
       assert.equal(lastRequest(mock).path, "/api/v2/cash_accounts/3/cash_account_transactions.json");
+    });
+  });
+
+  test("a long history comes in pages, newest first, from one fetch, and the cursor only fits its own query", async () => {
+    await withServer([], { MCP_MAX_RESPONSE_CHARS: "5000" }, async (call, mock) => {
+      const first = await call("list_cash_account_transactions", { cash_account_id: LONG_HISTORY });
+      const pages = await walkPages(first.payload, async (cursor) => (await call("list_cash_account_transactions", { cash_account_id: LONG_HISTORY, cursor })).payload);
+      const ids: number[] = pages.flatMap((page) => page.cash_account_transactions.map((t: { id: number }) => t.id));
+
+      assert.equal(first.payload.pagination.total, 80);
+      assert.ok(pages.length > 1);
+      assert.equal(mock.requests.filter((r) => r.path === `/api/v2/cash_accounts/${LONG_HISTORY}/cash_account_transactions.json`).length, 1, "later pages come from the cached list");
+      assert.equal(new Set(ids).size, 80);
+      assert.deepEqual(ids, [...ids].sort((a, b) => b - a), "newest first");
+      assert.deepEqual(first.payload.links, { self: "mock" }, "the rest of Sharesight's reply comes back with every page");
+
+      const other = await call("list_cash_account_transactions", { cash_account_id: LONG_HISTORY, from: "2026-01-01", cursor: first.payload.pagination.next_cursor });
+
+      assert.equal(other.isError, true);
+      assert.match(other.text, /different query/);
     });
   });
 
