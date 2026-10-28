@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  HOLDING_WITH_FOREIGN_PAYOUT as FOREIGN_PAYOUT,
   HOLDING_WITH_NOTHING_PENDING as NOTHING_PENDING,
   HOLDING_WITH_PENDING_INTEREST as PENDING_INTEREST,
   HOLDING_WITH_PENDING_REINVESTMENT as PENDING_REINVESTMENT,
@@ -64,6 +65,15 @@ describe("unconfirmed payouts and trades", () => {
 
       assert.equal(result.isError, false, result.text);
       assert.deepEqual(lastPost(mock), { method: "POST", path: "/api/v2/payouts.json", body: { payout: { holding_id: PLAIN_HOLDING, company_event_id: 77, state: "confirmed" } } });
+    });
+  });
+
+  test("confirm_payout sends the unconfirmed payout's currency and rate, so a foreign payout is not stored in the instrument's currency", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const result = await call("confirm_payout", { holding_id: FOREIGN_PAYOUT, company_event_id: 77 });
+
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(lastPost(mock).body, { payout: { holding_id: FOREIGN_PAYOUT, company_event_id: 77, state: "confirmed", currency_code: "USD", exchange_rate: 0.65 } });
     });
   });
 

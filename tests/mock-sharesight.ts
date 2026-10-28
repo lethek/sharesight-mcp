@@ -31,6 +31,7 @@ export const HOLDING_WITH_PENDING_REINVESTMENT = 5; // an unconfirmed trade for 
 export const HOLDING_WITH_NOTHING_PENDING = 7;
 export const HOLDING_WITH_PENDING_INTEREST = 8; // an unconfirmed interest payout on 2025-12-20, gone once a rejection is posted
 export const HOLDING_WITH_STUCK_INTEREST = 9; // an unconfirmed interest payout on 2025-12-20 that a rejection does not remove
+export const HOLDING_WITH_FOREIGN_PAYOUT = 10; // an unconfirmed USD dividend for company event 77, like a US distribution on an ASX CDI
 export const CASH_ACCOUNT_WITH_LONG_HISTORY = 99; // 80 transactions, enough to need several pages
 export const PORTFOLIO_WITH_LONG_LISTS = 99; // 60 unconfirmed payouts among confirmed ones, and 80 trades, enough to need several pages
 export const HOLDING_WITH_LONG_HISTORY = 99; // 80 trades and 80 payouts
@@ -180,8 +181,19 @@ function routes(mock: MockSharesight, holdings: object[]): Route[] {
         const rejected = mock.requests.some((r) => r.body?.payout?.state === "rejected" && r.body.payout.holding_id === id);
         const pending = id === HOLDING_WITH_STUCK_INTEREST || (id === HOLDING_WITH_PENDING_INTEREST && !rejected);
 
+        if (id === HOLDING_WITH_FOREIGN_PAYOUT) {
+          send(200, { payouts: [{ state: "confirmed", company_event_id: 76, currency: "AUD", exchange_rate: 1 }, { state: "unconfirmed", company_event_id: 77, currency: "USD", exchange_rate: 0.65 }] });
+          return;
+        }
+
         send(200, { payouts: pending ? [{ state: "unconfirmed", paid_on: "2025-12-20" }] : [] });
       },
+    },
+    // v2: updating a payout, the only way to change its currency
+    {
+      methods: ["PUT"],
+      path: /^\/api\/v2\/payouts\/\d+\.json$/,
+      handle: acceptWrite,
     },
     {
       methods: ["GET"],

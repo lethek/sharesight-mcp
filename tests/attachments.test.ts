@@ -250,6 +250,26 @@ describe("attachments through the tools", () => {
     });
   });
 
+  test("update_payout sets currency_code through v2 before the v3 update, and needs exchange_rate with it", async () => {
+    await withServer([], {}, async (call, mock) => {
+      const noRate = await call("update_payout", { payout_id: 9, currency_code: "USD", reinvestment_trade: { reinvested: false, quantity: 0 } });
+
+      assert.equal(noRate.isError, true);
+      assert.match(noRate.text, /exchange_rate/);
+      assert.equal(mock.requests.filter((r) => r.method === "PUT").length, 0);
+
+      const drp = { reinvested: false, quantity: 0 };
+      const result = await call("update_payout", { payout_id: 9, currency_code: "USD", exchange_rate: 0.65, reinvestment_trade: drp });
+      const puts = mock.requests.filter((r) => r.method === "PUT").map(({ path, body }) => ({ path, body }));
+
+      assert.equal(result.isError, false, result.text);
+      assert.deepEqual(puts, [
+        { path: "/api/v2/payouts/9.json", body: { payout: { currency_code: "USD", exchange_rate: 0.65 } } },
+        { path: "/api/v3/payouts/9", body: { payout: { exchange_rate: 0.65, reinvestment_trade: drp } } },
+      ]);
+    });
+  });
+
   test("update_portfolio_user_setting PATCHes the settings under portfolio_user_setting", async () => {
     await withServer([], {}, async (call, mock) => {
       const result = await call("update_portfolio_user_setting", { portfolio_id: 7, grouping: "market", combined: false });

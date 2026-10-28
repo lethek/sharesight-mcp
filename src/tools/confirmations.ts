@@ -157,12 +157,16 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
           }
         }
 
+        // Without the currency, Sharesight stores the payout in the instrument's currency: a USD distribution on an ASX CDI becomes AUD
+        const pending = await pendingPayout(client, holding_id, company_event_id, paid_on);
+
         return formatResult(
           await client.setPayoutStateV2({
             holding_id,
             company_event_id,
             paid_on,
             state: "confirmed",
+            ...(pending?.currency && { currency_code: pending.currency, exchange_rate: pending.exchange_rate }),
             ...(reinvestment && {
               drp_trade_attributes: {
                 dividend_reinvested: true,
@@ -224,9 +228,17 @@ export function registerConfirmationWriteTools(server: McpServer, client: Shares
   );
 }
 
+/** The holding's unconfirmed payout for that company event, or on that date */
+async function pendingPayout(client: SharesightClient, holdingId: number, companyEventId: number | undefined, paidOn: string | undefined): Promise<UnconfirmedItem | undefined> {
+  const range = paidOn === undefined ? { start_date: EARLIEST, end_date: LATEST } : { start_date: paidOn, end_date: paidOn, use_date: "paid_on" };
+  const payouts = await client.listHoldingPayoutsV2(holdingId, range);
+
+  return itemsOf(payouts, "payouts").find(
+    (payout) => payout.state === "unconfirmed" && (paidOn === undefined ? payout.company_event_id === companyEventId : payout.paid_on === paidOn)
+  );
+}
+
 /** Whether the holding has an unconfirmed payout on that date */
 async function hasPendingPayout(client: SharesightClient, holdingId: number, paidOn: string): Promise<boolean> {
-  const payouts = await client.listHoldingPayoutsV2(holdingId, { start_date: paidOn, end_date: paidOn, use_date: "paid_on" });
-
-  return itemsOf(payouts, "payouts").some((payout) => payout.state === "unconfirmed" && payout.paid_on === paidOn);
+  return (await pendingPayout(client, holdingId, undefined, paidOn)) !== undefined;
 }

@@ -9,6 +9,8 @@ export interface UnconfirmedItem {
   company_event_id?: number | null;
   quantity?: number;
   price?: number;
+  currency?: string;
+  exchange_rate?: number;
 }
 
 /** The lists have no filters or reply fields of their own: the query is the portfolio and the date range, which are part of the scope. */

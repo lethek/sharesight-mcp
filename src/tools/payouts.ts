@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SharesightClient } from "../sharesight-client.js";
 import { attachmentInput, attachmentRemoval, withAttachment, type AttachmentSettings } from "./attachments.js";
 import { byDate, listWhole, type WholeLister } from "../whole-list.js";
-import { CREATE, DELETE, OVERWRITE, PAGING_HELP, READ_ONLY, formatError, formatResult, holdingId, pagingInput } from "./common.js";
+import { CREATE, DELETE, OVERWRITE, PAGING_HELP, READ_ONLY, formatError, formatFailure, formatResult, holdingId, pagingInput } from "./common.js";
 
 const ATTACHMENT_HELP = "Payouts list their attachments (id, file name, size, type) but this server cannot download the file itself.";
 
@@ -131,14 +131,31 @@ export function registerPayoutWriteTools(server: McpServer, client: SharesightCl
           "Always required by Sharesight. Send the payout's current DRP details, or reinvested false to leave it without one: false removes an existing DRP trade."
         ),
         ...payoutFields,
+        currency_code: z
+          .string()
+          .length(3)
+          .optional()
+          .describe(
+            "ISO code of the payout currency, to correct it, with exchange_rate. Sharesight's v3 API ignores the currency, so it is set through v2 first, and a payout in the portfolio currency is held at rate 1."
+          ),
         confirm_source: z.literal("pro_rata").optional().describe("The source of the confirmation, when confirming a payout"),
         ...attachmentInput,
         ...attachmentRemoval,
       }),
     },
-    async ({ payout_id, ...fields }) => {
+    async ({ payout_id, currency_code, ...fields }) => {
+      if (currency_code !== undefined && fields.exchange_rate === undefined) {
+        return formatFailure("Give exchange_rate with currency_code, or the payout keeps the old rate in its new currency.");
+      }
+
       try {
-        return formatResult(await client.updatePayout(payout_id, await withAttachment(fields, paths)));
+        const data = await withAttachment(fields, paths);
+
+        if (currency_code !== undefined) {
+          await client.updatePayoutV2(payout_id, { currency_code, exchange_rate: fields.exchange_rate });
+        }
+
+        return formatResult(await client.updatePayout(payout_id, data));
       } catch (error) {
         return formatError(error);
       }
