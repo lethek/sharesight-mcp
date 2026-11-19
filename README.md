@@ -37,6 +37,8 @@ Add to your Claude Desktop config file:
 }
 ```
 
+The server starts in read-only mode, so your assistant can read your portfolio but not change it. To offer the write tools as well, add `"MCP_READ_ONLY": "false"` to `env`. See [Read-only mode](#read-only-mode).
+
 Restart Claude Desktop and you're ready to go!
 
 ### Pinning a release
@@ -65,7 +67,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 This server exposes **75 tools** covering most Sharesight v3 API endpoints plus the v2 endpoints that v3 lacks, grouped by feature area. Not covered: file imports, connections, the watchlist, bulk prices, portfolio and membership management, holding merges, and the lookups other than countries and groups. Each area lists its read tools first, then its write tools.
 
-Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. To keep an assistant from changing anything, see [Read-only mode](#read-only-mode).
+Every tool carries MCP annotations, so clients can tell reads from writes and ask for confirmation before the destructive ones. Read tools are marked read-only. Create tools are marked non-destructive and not idempotent, update tools non-destructive and idempotent, and delete tools destructive and idempotent. The exception is `update_trade` and `update_payout`, which can discard an attachment and are marked destructive. The server starts in [read-only mode](#read-only-mode), so only the read tools are offered until you set `MCP_READ_ONLY=false`.
 
 ### Portfolios
 | Tool | Kind | Description |
@@ -229,7 +231,7 @@ A new attachment replaces the existing one, and this server cannot read back a r
 
 ### Read-only mode
 
-Set `MCP_READ_ONLY=true` to leave out every write tool, so the server offers only the 25 read tools. The write tools are not registered at all, so a client cannot call them even if it ignores the annotations. The value is `true` or `false`, in any case, and anything else stops the server at startup.
+By default the server leaves out every write tool, so it offers only the 40 read tools. The write tools are not registered at all, so a client cannot call them even if it ignores the annotations. Set `MCP_READ_ONLY=false` to offer all the tools. The value is `true` or `false`, in any case, and anything else stops the server at startup.
 
 ### Filtering and paging holdings
 
@@ -256,7 +258,7 @@ The trade, payout, instrument, country and cash transaction lists page the same 
 |----------|---------|---------|
 | `MCP_MAX_RESPONSE_CHARS` | `30000` | Size limit for one page of a paged list, in characters (at least 5000). Keep it well under your client's tool output limit, which in Claude Code defaults to 25,000 tokens. The default is about a third of the size that exceeded that limit in testing. |
 | `MCP_CACHE_TTL_SECONDS` | `60` | How long the holdings list is cached for later pages. `0` turns the cache off. |
-| `MCP_READ_ONLY` | `false` | `true` leaves out the tools that create, change or delete data. See [Read-only mode](#read-only-mode). |
+| `MCP_READ_ONLY` | `true` | `true` leaves out the tools that create, change or delete data. Set `false` to offer them. See [Read-only mode](#read-only-mode). |
 | `MCP_DATA_ROOT` | none | Directory that `attachment_path` reads from. See [Attachments](#attachments). |
 | `MCP_MAX_ATTACHMENT_BYTES` | `10485760` | Largest attachment, in bytes. See [Attachments](#attachments). |
 | `MCP_CURSOR_SECRET` | random | Signs cursors. By default each process picks its own, so a cursor stops working after a restart and does not work on another instance. Set the same value on every instance to avoid that. |
@@ -303,7 +305,7 @@ By default the server talks to a local client over stdio. To serve MCP over Stre
 
 The endpoint is `/mcp`, and `/healthz` returns `ok` without authentication, for container health checks. It only reports that the process is up and listening. It does not check that Sharesight is reachable or that the credentials still work.
 
-The endpoint acts as your single Sharesight account, so anyone who can call it can read and change your portfolio. `MCP_AUTH_TOKEN` is required when `MCP_HOST` is not a loopback address, and the server will not start without it. Without a token on loopback, requests with a non-local `Host` or `Origin` header are rejected. The server speaks plain HTTP, so put it behind a TLS-terminating proxy before exposing it beyond your machine.
+The endpoint acts as your single Sharesight account, so anyone who can call it can read your portfolio, and change it too if `MCP_READ_ONLY` is `false`. `MCP_AUTH_TOKEN` is required when `MCP_HOST` is not a loopback address, and the server will not start without it. Without a token on loopback, requests with a non-local `Host` or `Origin` header are rejected. The server speaks plain HTTP, so put it behind a TLS-terminating proxy before exposing it beyond your machine.
 
 Clients send the token as `Authorization: Bearer <token>`.
 
@@ -330,7 +332,7 @@ docker run -d --name sharesight-mcp -p 3000:3000 \
   ghcr.io/lethek/sharesight-mcp:latest
 ```
 
-The container runs in HTTP mode, listens on all interfaces and runs as a non-root user. It will not start without `MCP_AUTH_TOKEN`. Add `-e MCP_READ_ONLY=true` to run it without the write tools. See [HTTP Mode](#http-mode) for the other settings and for putting TLS in front of it. The image has a health check against `/healthz`.
+The container runs in HTTP mode, listens on all interfaces and runs as a non-root user. It will not start without `MCP_AUTH_TOKEN`. It runs without the write tools unless you add `-e MCP_READ_ONLY=false`. See [HTTP Mode](#http-mode) for the other settings and for putting TLS in front of it. The image has a health check against `/healthz`.
 
 ### Unraid
 
@@ -341,7 +343,7 @@ The image can be installed from Unraid's Community Applications as **Sharesight-
 3. Apply, then check that `http://<unraid-ip>:3000/healthz` returns `ok`.
 4. Point your MCP client at `http://<unraid-ip>:3000/mcp` with the header `Authorization: Bearer <token>`.
 
-The template uses the `main` tag, which follows the newest build of `main`, and offers the settings listed in [Settings](#settings). Unlike the image, it sets `MCP_READ_ONLY` to `true` by default, so the write tools are off until you change it. As with any Docker install, keep the port on your LAN or a VPN, or put a TLS proxy in front of it.
+The template uses the `main` tag, which follows the newest build of `main`, and offers the settings listed in [Settings](#settings). Like the image, it has `MCP_READ_ONLY` set to `true` by default, so the write tools are off until you change it. As with any Docker install, keep the port on your LAN or a VPN, or put a TLS proxy in front of it.
 
 ## Releasing
 

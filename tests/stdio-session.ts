@@ -33,6 +33,7 @@ export async function withServer<T>(
       SHARESIGHT_BASE_URL: mock.url,
       SHARESIGHT_CLIENT_ID: MOCK_CLIENT_ID,
       SHARESIGHT_CLIENT_SECRET: MOCK_CLIENT_SECRET,
+      MCP_READ_ONLY: "false",
       ...env,
     },
     stdio: ["pipe", "pipe", "ignore"],

@@ -110,6 +110,18 @@ describe("serve startup", () => {
     assert.match(result.stderr, /Read-only mode: tools that create, change or delete data are not available/);
   });
 
+  test("read-only mode is the default", async () => {
+    const result = await run(offlinePreload, credentials, "running on stdio");
+
+    assert.match(result.stderr, /Read-only mode: tools that create, change or delete data are not available/);
+  });
+
+  test("MCP_READ_ONLY=false does not say read-only", async () => {
+    const result = await run(offlinePreload, { ...credentials, MCP_READ_ONLY: "false" }, "running on stdio");
+
+    assert.doesNotMatch(result.stderr, /Read-only mode/);
+  });
+
   test("--http listens on the configured port", async () => {
     const result = await run(offlinePreload, { ...credentials, MCP_PORT: "0" }, "running on http://127.0.0.1:", ["--http"]);
 

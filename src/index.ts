@@ -67,9 +67,9 @@ function readBaseUrl(env: NodeJS.ProcessEnv): string {
   throw new Error(`SHARESIGHT_BASE_URL must be an https URL, or an http URL for localhost, without a query or fragment, got "${text}".`);
 }
 
-/** Reads MCP_READ_ONLY: true leaves out every tool that creates, changes or deletes data. */
+/** Reads MCP_READ_ONLY: true, the default, leaves out every tool that creates, changes or deletes data. */
 function readReadOnly(env: NodeJS.ProcessEnv): boolean {
-  const text = env.MCP_READ_ONLY?.trim().toLowerCase() || "false";
+  const text = env.MCP_READ_ONLY?.trim().toLowerCase() || "true";
 
   if (text !== "true" && text !== "false") {
     throw new Error(`MCP_READ_ONLY must be "true" or "false", got "${env.MCP_READ_ONLY}".`);
@@ -315,7 +315,7 @@ Commands:
   serve [--http]   Run the MCP server over stdio (default) or Streamable HTTP
 
 Environment variables:
-  MCP_READ_ONLY    "true" leaves out every tool that creates, changes or deletes data (default "false")
+  MCP_READ_ONLY    "true" leaves out every tool that creates, changes or deletes data (default "true", set "false" to offer them)
   MCP_DATA_ROOT    Directory attachment_path reads from, relative to it and confined to it; required for attachment_path over HTTP
   MCP_MAX_ATTACHMENT_BYTES  Largest attachment in bytes (default ${DEFAULT_MAX_ATTACHMENT_BYTES})
 

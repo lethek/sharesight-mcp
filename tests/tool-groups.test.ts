@@ -174,7 +174,13 @@ describe("read-only mode", () => {
     });
   });
 
-  test("MCP_READ_ONLY=false, or not set, offers everything", async () => {
+  test("not setting MCP_READ_ONLY offers only the read tools", async () => {
+    await withServer([], { MCP_READ_ONLY: "" }, async (_call, _mock, request) => {
+      assert.deepEqual(names(await listTools(request)), READS);
+    });
+  });
+
+  test("MCP_READ_ONLY=false offers everything", async () => {
     await withServer([], { MCP_READ_ONLY: "false" }, async (_call, _mock, request) => {
       assert.equal((await listTools(request)).length, READS.length + WRITES.length);
     });

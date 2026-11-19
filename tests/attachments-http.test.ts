@@ -16,7 +16,7 @@ const CONTENT = "contract note text";
 async function withHttpServer(env: Record<string, string>, run: (call: (name: string, args: object) => Promise<{ isError: boolean; text: string }>, requests: Array<{ path: string; body?: any }>) => Promise<void>) {
   const mock = await startMockSharesight([]);
   const child = spawn(process.execPath, [indexPath, "serve", "--http"], {
-    env: { ...inheritedEnv(), SHARESIGHT_BASE_URL: mock.url, SHARESIGHT_CLIENT_ID: MOCK_CLIENT_ID, SHARESIGHT_CLIENT_SECRET: MOCK_CLIENT_SECRET, MCP_PORT: "0", ...env },
+    env: { ...inheritedEnv(), SHARESIGHT_BASE_URL: mock.url, SHARESIGHT_CLIENT_ID: MOCK_CLIENT_ID, SHARESIGHT_CLIENT_SECRET: MOCK_CLIENT_SECRET, MCP_PORT: "0", MCP_READ_ONLY: "false", ...env },
     stdio: ["ignore", "ignore", "pipe"],
   });
   const timer = setTimeout(() => child.kill(), LIMIT_MS);
