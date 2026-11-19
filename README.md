@@ -332,6 +332,17 @@ docker run -d --name sharesight-mcp -p 3000:3000 \
 
 The container runs in HTTP mode, listens on all interfaces and runs as a non-root user. It will not start without `MCP_AUTH_TOKEN`. Add `-e MCP_READ_ONLY=true` to run it without the write tools. See [HTTP Mode](#http-mode) for the other settings and for putting TLS in front of it. The image has a health check against `/healthz`.
 
+### Unraid
+
+The image can be installed from Unraid's Community Applications as **Sharesight-MCP**. The template is maintained separately from this project, in [Eurotimmy/unraid-templates](https://github.com/Eurotimmy/unraid-templates/tree/main/Sharesight-MCP), and questions about it go to its [support thread](https://forums.unraid.net/topic/201331-support-eurotimmy-sharesight-mcp/) on the Unraid forums.
+
+1. In the Unraid web UI, open **Apps**, search for `Sharesight-MCP` and choose **Install**.
+2. Enter your Client ID and Client Secret, and set **MCP Auth Token** to a long random string, for example from `openssl rand -hex 32` in the Unraid terminal.
+3. Apply, then check that `http://<unraid-ip>:3000/healthz` returns `ok`.
+4. Point your MCP client at `http://<unraid-ip>:3000/mcp` with the header `Authorization: Bearer <token>`.
+
+The template uses the `main` tag, which follows the newest build of `main`, and offers the settings listed in [Settings](#settings). Unlike the image, it sets `MCP_READ_ONLY` to `true` by default, so the write tools are off until you change it. As with any Docker install, keep the port on your LAN or a VPN, or put a TLS proxy in front of it.
+
 ## Releasing
 
 The git tag is the only place a version is written. To release, tag a commit on `main` and push the tag:
