@@ -343,7 +343,7 @@ The image can be installed from Unraid's Community Applications as **Sharesight-
 3. Apply, then check that `http://<unraid-ip>:3000/healthz` returns `ok`.
 4. Point your MCP client at `http://<unraid-ip>:3000/mcp` with the header `Authorization: Bearer <token>`.
 
-The template uses the `main` tag, which follows the newest build of `main`, and offers the settings listed in [Settings](#settings). Like the image, it has `MCP_READ_ONLY` set to `true` by default, so the write tools are off until you change it. As with any Docker install, keep the port on your LAN or a VPN, or put a TLS proxy in front of it.
+The template uses the `latest` tag, which follows the newest release (see [Docker](#docker) for the other tags; to track every commit, change the container's Repository to `ghcr.io/lethek/sharesight-mcp:main`), and offers the settings listed in [Settings](#settings). Like the image, it has `MCP_READ_ONLY` set to `true` by default, so the write tools are off until you change it. As with any Docker install, keep the port on your LAN or a VPN, or put a TLS proxy in front of it.
 
 ## Releasing
 
